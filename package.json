@@ -1,0 +1,11 @@
+{
+  "name": "friend-ludo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && node server.js",
+    "backend": "cd backend && node server.js",
+    "app": "cd app && node server.cjs",
+    "admin": "cd admin && node server.cjs"
+  }
+}
