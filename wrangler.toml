@@ -1,0 +1,6 @@
+name = "friend-ludo"
+compatibility_date = "2024-09-23"
+
+[assets]
+directory = "./app"
+not_found_handling = "single-page-application"
