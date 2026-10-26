@@ -19,10 +19,10 @@
   "display": "standalone",
   "dir": "auto",
   "lang": "en-US",
-  "name": "friendludo",
-  "short_name": "friendludo",
+  "name": "WAludo",
+  "short_name": "WAludo",
   "start_url": "/",
-  "scope": "https://friendludo.com/",
-  "description": "https://friendludo.com/",
-  "id": "https://friendludo.com/"
+  "scope": "/",
+  "description": "Play Ludo & Earn Instant Paytm Cash on WAludo",
+  "id": "/"
 }

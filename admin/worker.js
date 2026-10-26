@@ -48,7 +48,12 @@ export default {
         });
       }
 
-      // 2. Service Worker fallback
+      // 2. Cloudflare RUM / CDN-CGI Beacon absorber
+      if (url.pathname.startsWith('/cdn-cgi/')) {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+
+      // 3. Service Worker fallback
       if (url.pathname === '/service-worker.js' || url.pathname === '/sw.js') {
         return new Response('// Empty service worker\nself.addEventListener("fetch", () => {});', {
           headers: {
