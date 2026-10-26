@@ -146,14 +146,32 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
 
+  // Cloudflare RUM / CDN-CGI Beacon absorber (Prevents 404 console errors)
+  if (pathname.startsWith('/cdn-cgi/')) {
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+    res.end();
+    return;
+  }
+
   // 1. API and Realtime proxy to WAludo Backend
-  if (
+  const isApi = 
     pathname.startsWith('/api') || 
     pathname.startsWith('/waludo') || 
+    pathname.startsWith('/auth') || 
+    pathname.startsWith('/user/') || 
+    pathname.startsWith('/transaction') || 
+    pathname.startsWith('/payment') || 
+    pathname.startsWith('/challenges') || 
+    pathname.startsWith('/game/') || 
+    pathname.startsWith('/spin/') || 
+    pathname.startsWith('/admin') || 
+    pathname.startsWith('/v1/core-sys-ops') || 
     pathname === '/maintain' || 
     pathname === '/version' || 
-    pathname.startsWith('/socket.io')
-  ) {
+    pathname === '/health' || 
+    pathname.startsWith('/socket.io');
+
+  if (isApi) {
     const backendTarget = new URL(url.pathname + url.search, BACKEND_URL);
     return proxyRequest(req, res, backendTarget.toString());
   }
@@ -237,7 +255,6 @@ server.listen(PORT, HOST, () => {
   console.log(`=======================================================`);
   console.log(`🚀 Friend Ludo Application running!`);
   console.log(`💻 Local URL:   http://localhost:${PORT}`);
-  console.log(`📱 Network URL: http://${lanIp}:${PORT}`);
-  console.log(`📡 Backend Proxy: https://${REMOTE_API}`);
+  console.log(`📡 Backend Proxy: ${BACKEND_URL}`);
   console.log(`=======================================================`);
 });

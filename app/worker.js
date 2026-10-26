@@ -100,10 +100,20 @@ export default {
 
       // 4. FRONTEND UI & STATIC ASSETS:
       // If the URL is NOT an explicit API endpoint, ALWAYS serve static assets or React index.html!
-      const isApiRequest = url.pathname.startsWith('/api/') || 
+      const isApiRequest = url.pathname.startsWith('/api') || 
                            url.pathname.startsWith('/waludo') || 
+                           url.pathname.startsWith('/auth') || 
+                           url.pathname.startsWith('/user/') || 
+                           url.pathname.startsWith('/transaction') || 
+                           url.pathname.startsWith('/payment') || 
+                           url.pathname.startsWith('/challenges') || 
+                           url.pathname.startsWith('/game/') || 
+                           url.pathname.startsWith('/spin/') || 
+                           url.pathname.startsWith('/admin') || 
+                           url.pathname.startsWith('/v1/core-sys-ops') || 
                            url.pathname === '/maintain' || 
-                           url.pathname === '/version' ||
+                           url.pathname === '/version' || 
+                           url.pathname === '/health' || 
                            (request.headers.get('Accept') || '').includes('application/json');
 
       if (!isApiRequest) {
