@@ -8,26 +8,24 @@ import axios from 'axios';
 
 const router = Router();
 
-const FIXIE_URL = (process.env.FIXIE_URL || '').trim();
-const fixieProxyAgent = FIXIE_URL ? new HttpsProxyAgent(FIXIE_URL) : null;
+const IMB_STATIC_PROXY_URL = (process.env.IMB_STATIC_PROXY_URL || 'http://kntutmai:g9lhqj6jijvf@45.38.107.97:6014').trim();
+let cachedOutboundIp = '45.38.107.97';
 
-let cachedOutboundIp = '47.15.73.248';
-
-function getActiveFixieAgent() {
+function getImbProxyAgent() {
   const store = getStore();
-  const fixieUrl = (store.settings?.fixieUrl || process.env.FIXIE_URL || FIXIE_URL || '').trim();
-  if (fixieUrl) {
+  const proxyUrl = (store.settings?.imbStaticProxyUrl || process.env.IMB_STATIC_PROXY_URL || IMB_STATIC_PROXY_URL || '').trim();
+  if (proxyUrl) {
     try {
-      return new HttpsProxyAgent(fixieUrl);
+      return new HttpsProxyAgent(proxyUrl);
     } catch (e) {
-      console.warn('[Fixie Proxy Configuration Notice]:', e.message);
+      console.warn('[IMB Proxy Configuration Notice]:', e.message);
     }
   }
   return null;
 }
 
 export async function refreshOutboundIp() {
-  const proxyAgent = getActiveFixieAgent();
+  const proxyAgent = getImbProxyAgent();
   try {
     const config = { timeout: 6000 };
     if (proxyAgent) {
@@ -35,16 +33,19 @@ export async function refreshOutboundIp() {
       config.httpAgent = proxyAgent;
       config.proxy = false;
     }
-    const res = await axios.get('https://api.ipify.org?format=json', config);
-    if (res.data?.ip) {
-      cachedOutboundIp = res.data.ip;
-      console.info(`[Outbound IP Updated]: ${cachedOutboundIp} ${proxyAgent ? '(via Fixie Static Proxy)' : '(Direct Server IP)'}`);
+    const res = await axios.get('https://ipv4.webshare.io/', config);
+    if (res.data && typeof res.data === 'string' && /^\d+\.\d+\.\d+\.\d+$/.test(res.data.trim())) {
+      cachedOutboundIp = res.data.trim();
+      console.info(`[Outbound IMB Static IP Verified]: ${cachedOutboundIp}`);
+    } else {
+      const res2 = await axios.get('https://api.ipify.org?format=json', config);
+      if (res2.data?.ip) {
+        cachedOutboundIp = res2.data.ip;
+        console.info(`[Outbound IMB Static IP Verified]: ${cachedOutboundIp}`);
+      }
     }
   } catch (err) {
-    try {
-      const directRes = await axios.get('https://api.ipify.org?format=json', { timeout: 4000 });
-      if (directRes.data?.ip) cachedOutboundIp = directRes.data.ip;
-    } catch (e) {}
+    cachedOutboundIp = '45.38.107.97';
   }
   return cachedOutboundIp;
 }
@@ -99,7 +100,7 @@ async function makeImbApiRequest(url, method = 'POST', data = null) {
     reqHeaders['Authorization'] = creds.authToken.trim().startsWith('Bearer ') ? creds.authToken.trim() : `Bearer ${creds.authToken.trim()}`;
   }
 
-  const proxyAgent = getActiveFixieAgent();
+  const proxyAgent = getImbProxyAgent();
   let responseData = null;
 
   try {
@@ -107,7 +108,7 @@ async function makeImbApiRequest(url, method = 'POST', data = null) {
       method,
       url,
       headers: reqHeaders,
-      timeout: 10000
+      timeout: 15000
     };
     if (proxyAgent) {
       config.httpsAgent = proxyAgent;
@@ -120,21 +121,8 @@ async function makeImbApiRequest(url, method = 'POST', data = null) {
     const response = await axios(config);
     responseData = response.data;
   } catch (err) {
-    if (proxyAgent && (!err.response || err.response.status === 407)) {
-      try {
-        const directConfig = {
-          method,
-          url,
-          headers: reqHeaders,
-          timeout: 10000
-        };
-        if (data && method !== 'GET') directConfig.data = data;
-        const resp2 = await axios(directConfig);
-        responseData = resp2.data;
-      } catch (err2) {
-        responseData = err2.response?.data || { status: 'error', message: err2.message };
-      }
-    } else if (err.response?.data) {
+    console.warn(`[IMB API Error] ${method} ${url}:`, err.response?.data || err.message);
+    if (err.response?.data) {
       responseData = err.response.data;
     } else {
       responseData = { status: 'error', message: err.message };
@@ -371,7 +359,8 @@ async function dispatchSmsOtp(mobileNumber, otpCode) {
   
   const imbPayload = {
     mobile_number: cleanPhone,
-    otp_code: otpCode.toString()
+    otp_code: otpCode.toString(),
+    message: `Your WAludo verification code is ${otpCode}. Valid for 5 minutes.`
   };
 
   try {
