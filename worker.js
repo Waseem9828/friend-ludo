@@ -263,6 +263,12 @@ export default {
           Wallet: 50,
           depositCash: 50,
           winningAmount: 0,
+          winningCash: 0,
+          totalWin: 0,
+          referelBalance: 0,
+          referralBalance: 0,
+          totalPenalty: 0,
+          gamesPlayed: 0,
           bonus: 0,
           avatar: 'https://cdn.iconscout.com/icon/free/png-256/free-avatar-370-456322.png',
           kycStatus: 'Pending',
@@ -298,6 +304,12 @@ export default {
             Wallet: 50,
             depositCash: 50,
             winningAmount: 0,
+            winningCash: 0,
+            totalWin: 0,
+            referelBalance: 0,
+            referralBalance: 0,
+            totalPenalty: 0,
+            gamesPlayed: 0,
             bonus: 0,
             avatar: 'https://cdn.iconscout.com/icon/free/png-256/free-avatar-370-456322.png',
             kycStatus: 'Pending',
@@ -308,6 +320,19 @@ export default {
 
       // Wallet Balances
       if (url.pathname.includes('/transaction/wallet')) {
+        const walletData = {
+          wallet: 50,
+          Wallet: 50,
+          depositCash: 50,
+          winningAmount: 0,
+          winningCash: 0,
+          bonus: 0,
+          totalWin: 0,
+          referelBalance: 0,
+          referralBalance: 0,
+          totalPenalty: 0,
+          totalAmount: 50
+        };
         return jsonResponse({
           status: 200,
           success: true,
@@ -316,12 +341,10 @@ export default {
           winningAmount: 0,
           bonus: 0,
           totalAmount: 50,
-          data: {
-            wallet: 50,
-            depositCash: 50,
-            winningAmount: 0,
-            bonus: 0
-          }
+          totalWin: 0,
+          referelBalance: 0,
+          totalPenalty: 0,
+          data: walletData
         });
       }
 
