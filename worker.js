@@ -15,7 +15,7 @@ export default {
         });
       }
 
-      // 1. Service Worker fallback to prevent registration errors
+      // 1. Service Worker fallback
       if (url.pathname === '/service-worker.js' || url.pathname === '/sw.js') {
         return new Response('// Empty service worker\nself.addEventListener("fetch", () => {});', {
           headers: {
@@ -25,7 +25,25 @@ export default {
         });
       }
 
-      // 2. Proxy API requests to live backend
+      // 2. Real-time WebSockets & Socket.IO Proxy (Battles & Matchmaking)
+      if (url.pathname.startsWith('/socket.io')) {
+        const targetUrl = new URL(url.pathname + url.search, 'https://socketv2.friendludo.com');
+        const newHeaders = new Headers(request.headers);
+        newHeaders.set('Origin', 'https://friendludo.com');
+        newHeaders.set('Referer', 'https://friendludo.com/');
+        newHeaders.set('Host', 'socketv2.friendludo.com');
+
+        const proxyReq = new Request(targetUrl.toString(), {
+          method: request.method,
+          headers: newHeaders,
+          body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+          redirect: 'follow'
+        });
+
+        return fetch(proxyReq);
+      }
+
+      // 3. Proxy REST API requests to live backend
       if (url.pathname.startsWith('/api') || url.pathname === '/maintain' || url.pathname === '/version') {
         const targetUrl = new URL(url.pathname + url.search, 'https://apiv2.friendludo.com');
         const newHeaders = new Headers(request.headers);
@@ -62,7 +80,7 @@ export default {
         }
       }
 
-      // 3. Serve Static Assets with explicit SPA fallback
+      // 4. Static Assets with explicit SPA & Remote Asset Fallback
       let assetRes;
       try {
         assetRes = await env.ASSETS.fetch(request);
@@ -70,8 +88,20 @@ export default {
         assetRes = null;
       }
 
-      // If missing file or 404 and not a static asset with extension (like .js, .png), serve index.html
+      // If asset not found
       if (!assetRes || assetRes.status === 404) {
+        // Fallback for missing assets from original live origin
+        if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/static/')) {
+          const remoteUrl = new URL(url.pathname, 'https://friendludo.com');
+          try {
+            const remoteRes = await fetch(remoteUrl.toString());
+            if (remoteRes.status === 200) {
+              return remoteRes;
+            }
+          } catch (re) {}
+        }
+
+        // SPA routing: If not a static file with an extension, serve index.html
         if (!url.pathname.includes('.')) {
           const indexUrl = new URL('/index.html', request.url);
           return await env.ASSETS.fetch(new Request(indexUrl.toString(), request));
@@ -80,7 +110,6 @@ export default {
 
       return assetRes || new Response('Not Found', { status: 404 });
     } catch (globalErr) {
-      // Catch-all to prevent Error 1101 Worker Exception
       try {
         const fallbackUrl = new URL('/index.html', request.url);
         return await env.ASSETS.fetch(new Request(fallbackUrl.toString(), request));
