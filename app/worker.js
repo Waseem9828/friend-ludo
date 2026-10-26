@@ -2,8 +2,10 @@
  * WAludo Cloudflare Worker - Autonomous Edge & Routing Engine
  * - Brand: WAludo
  * - Full REST API & Real-time protocol compatibility without external dependencies
+ * - Fix: Browser page navigation always serves React index.html UI
+ * - Only AJAX / API calls serve JSON
  * - Secure fallback & proxying to dedicated WAludo Backend (when env.BACKEND_API_URL is configured)
- * - Zero references to old compromised origins (friendludo.com, apiv2, socketv2)
+ * - Zero references to old compromised origins
  */
 
 const WALUDO_CONFIG = {
@@ -40,7 +42,7 @@ export default {
     try {
       const url = new URL(request.url);
 
-      // Handle CORS preflight
+      // 1. Handle CORS preflight
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
@@ -48,7 +50,7 @@ export default {
         });
       }
 
-      // 1. Service Worker fallback
+      // 2. Service Worker fallback
       if (url.pathname === '/service-worker.js' || url.pathname === '/sw.js') {
         return new Response('// Empty service worker\nself.addEventListener("fetch", () => {});', {
           headers: {
@@ -58,7 +60,40 @@ export default {
         });
       }
 
-      // 2. Real-time WebSockets & Socket.IO Handler
+      // 3. Serve Static Assets (files with extensions)
+      if (
+        url.pathname.startsWith('/static/') || 
+        url.pathname.startsWith('/assets/') || 
+        url.pathname.endsWith('.js') || 
+        url.pathname.endsWith('.css') || 
+        url.pathname.endsWith('.png') || 
+        url.pathname.endsWith('.jpg') || 
+        url.pathname.endsWith('.jpeg') || 
+        url.pathname.endsWith('.webp') || 
+        url.pathname.endsWith('.svg') || 
+        url.pathname.endsWith('.ico') || 
+        url.pathname.endsWith('.json') || 
+        url.pathname.endsWith('.webmanifest') || 
+        url.pathname.endsWith('.woff') || 
+        url.pathname.endsWith('.woff2') || 
+        url.pathname.endsWith('.ttf')
+      ) {
+        try {
+          const assetRes = await env.ASSETS.fetch(request);
+          if (assetRes && assetRes.status === 200) {
+            return assetRes;
+          }
+        } catch (e) {}
+
+        // Missing image fallback: return clean transparent SVG
+        if (url.pathname.endsWith('.svg') || url.pathname.endsWith('.png') || url.pathname.endsWith('.jpg') || url.pathname.endsWith('.webp')) {
+          return new Response('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>', {
+            headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }
+          });
+        }
+      }
+
+      // 4. Real-time WebSockets & Socket.IO Handler
       if (url.pathname.startsWith('/socket.io')) {
         const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
         if (backendUrl) {
@@ -80,7 +115,6 @@ export default {
         // Autonomous Socket.IO handshake responder
         if (url.searchParams.get('transport') === 'polling') {
           const sid = 'waludo_' + Math.random().toString(36).substring(2, 10);
-          // Return Socket.IO v4 handshake packet
           const handshake = `0{"sid":"${sid}","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}`;
           return new Response(handshake, {
             status: 200,
@@ -94,18 +128,35 @@ export default {
         return jsonResponse({ success: true, message: 'WAludo Real-time Gateway' });
       }
 
-      // 3. Forward to Dedicated Backend if Configured
-      const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
-      const isApiRoute = url.pathname.startsWith('/api') || 
-                         url.pathname.startsWith('/waludo') || 
-                         url.pathname === '/maintain' || 
-                         url.pathname === '/version' ||
-                         url.pathname.startsWith('/payment') ||
-                         url.pathname.startsWith('/transaction') ||
-                         url.pathname.startsWith('/user') ||
-                         url.pathname.startsWith('/auth');
+      // 5. CRITICAL FIX: Browser Page Navigation MUST ALWAYS serve React UI (index.html)
+      // Never return JSON when the user opens the user app or routes in the browser!
+      const acceptHeader = request.headers.get('Accept') || '';
+      const secFetchDest = request.headers.get('Sec-Fetch-Dest') || '';
+      const hasAuthHeader = request.headers.has('Authorization') || request.headers.has('x-auth-token') || request.headers.has('x-system-key');
 
-      if (backendUrl && isApiRoute) {
+      const isExplicitApiCall = url.pathname.startsWith('/api/') || 
+                                url.pathname.startsWith('/waludo') || 
+                                url.pathname === '/maintain' || 
+                                url.pathname === '/version' ||
+                                (hasAuthHeader && !acceptHeader.includes('text/html'));
+
+      const isPageNavigation = secFetchDest === 'document' || 
+                               acceptHeader.includes('text/html') || 
+                               (!isExplicitApiCall && !url.pathname.includes('.'));
+
+      if (isPageNavigation) {
+        try {
+          const indexUrl = new URL('/index.html', request.url);
+          const indexRes = await env.ASSETS.fetch(new Request(indexUrl.toString(), request));
+          if (indexRes && indexRes.status === 200) {
+            return indexRes;
+          }
+        } catch (e) {}
+      }
+
+      // 6. Forward API calls to Dedicated Backend if Configured
+      const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
+      if (backendUrl && isExplicitApiCall) {
         const targetUrl = new URL(url.pathname + url.search, backendUrl);
         const newHeaders = new Headers(request.headers);
         newHeaders.set('Origin', url.origin);
@@ -126,12 +177,10 @@ export default {
           resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
           resHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, x-system-key');
           return new Response(res.body, { status: res.status, headers: resHeaders });
-        } catch (e) {
-          // If proxy fails, fallback to autonomous responses below
-        }
+        } catch (e) {}
       }
 
-      // 4. WAludo Autonomous Edge API Engine
+      // 7. WAludo Autonomous Edge API Engine (Responds to AJAX calls from React app)
       // Health / Status
       if (url.pathname === '/health' || url.pathname === '/api/health' || url.pathname === '/api/waludo/status' || url.pathname === '/waludo/status') {
         return jsonResponse({
@@ -251,7 +300,6 @@ export default {
 
       // User Profile
       if (url.pathname.includes('/user/getUserProfileData')) {
-        const authHeader = request.headers.get('Authorization') || request.headers.get('x-auth-token') || '';
         const phone = '9828786246';
         return jsonResponse({
           status: 200,
@@ -261,8 +309,8 @@ export default {
             id: 'usr_' + phone,
             Phone: phone,
             phone: phone,
-            Name: 'WAludo Player',
-            name: 'WAludo Player',
+            Name: 'Waseem Akram',
+            name: 'Waseem Akram',
             wallet: 50,
             Wallet: 50,
             depositCash: 50,
@@ -329,35 +377,13 @@ export default {
       }
 
       // Generic API fallback (prevents 404/500 errors on client)
-      if (isApiRoute) {
+      if (isExplicitApiCall) {
         return jsonResponse({ status: 200, success: true, data: [] });
       }
 
-      // 5. Static Assets with explicit SPA routing
-      let assetRes;
-      try {
-        assetRes = await env.ASSETS.fetch(request);
-      } catch (e) {
-        assetRes = null;
-      }
-
-      // If asset not found
-      if (!assetRes || assetRes.status === 404) {
-        // SPA routing: If not a static file with an extension, serve index.html
-        if (!url.pathname.includes('.')) {
-          const indexUrl = new URL('/index.html', request.url);
-          return await env.ASSETS.fetch(new Request(indexUrl.toString(), request));
-        }
-
-        // Missing image fallback: return empty SVG
-        if (url.pathname.endsWith('.svg') || url.pathname.endsWith('.png') || url.pathname.endsWith('.jpg') || url.pathname.endsWith('.webp')) {
-          return new Response('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>', {
-            headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' }
-          });
-        }
-      }
-
-      return assetRes || new Response('Not Found', { status: 404 });
+      // Default fallback: Always serve React index.html
+      const fallbackUrl = new URL('/index.html', request.url);
+      return await env.ASSETS.fetch(new Request(fallbackUrl.toString(), request));
     } catch (globalErr) {
       try {
         const fallbackUrl = new URL('/index.html', request.url);

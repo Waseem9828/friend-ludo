@@ -3,8 +3,9 @@
  * - Brand: WAludo
  * - Full compatibility with React Admin Dashboard & RTK Query
  * - Direct SuperAdmin privileges without external dependencies
- * - Secure proxying to dedicated WAludo Backend (when env.BACKEND_API_URL is configured)
- * - Zero references to old compromised origins (friendludo.com, apiv2, akadmin2)
+ * - Fix: Browser page navigation always serves React index.html UI
+ * - Only AJAX / API calls serve JSON
+ * - Zero references to old compromised origins
  */
 
 const CORS_HEADERS = {
@@ -40,7 +41,7 @@ export default {
     try {
       const url = new URL(request.url);
 
-      // Handle CORS preflight
+      // 1. Handle CORS preflight
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
@@ -48,7 +49,7 @@ export default {
         });
       }
 
-      // 1. Service Worker fallback
+      // 2. Service Worker fallback
       if (url.pathname === '/service-worker.js' || url.pathname === '/sw.js') {
         return new Response('// Empty service worker\nself.addEventListener("fetch", () => {});', {
           headers: {
@@ -58,19 +59,58 @@ export default {
         });
       }
 
-      // 2. Forward to Dedicated Backend if Configured
-      const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
-      const isApiRoute = url.pathname.startsWith('/api') || 
-                         url.pathname.startsWith('/admin') || 
-                         url.pathname.startsWith('/v1/core-sys-ops') || 
-                         url.pathname.startsWith('/waludo') || 
-                         url.pathname.startsWith('/wallet') || 
-                         url.pathname.startsWith('/result') || 
-                         url.pathname.startsWith('/challenge') || 
-                         url.pathname === '/maintain' || 
-                         url.pathname === '/version';
+      // 3. Serve Static Assets (files with extensions)
+      if (
+        url.pathname.startsWith('/static/') || 
+        url.pathname.endsWith('.js') || 
+        url.pathname.endsWith('.css') || 
+        url.pathname.endsWith('.png') || 
+        url.pathname.endsWith('.jpg') || 
+        url.pathname.endsWith('.jpeg') || 
+        url.pathname.endsWith('.svg') || 
+        url.pathname.endsWith('.ico') || 
+        url.pathname.endsWith('.woff') || 
+        url.pathname.endsWith('.woff2') || 
+        url.pathname.endsWith('.ttf')
+      ) {
+        try {
+          const assetRes = await env.ASSETS.fetch(request);
+          if (assetRes && assetRes.status === 200) {
+            return assetRes;
+          }
+        } catch (e) {}
+      }
 
-      if (backendUrl && isApiRoute) {
+      // 4. CRITICAL FIX: Browser Page Navigation MUST ALWAYS serve React UI (index.html)
+      // Never return JSON when the user opens /admin/dashboard or any route in the browser!
+      const acceptHeader = request.headers.get('Accept') || '';
+      const secFetchDest = request.headers.get('Sec-Fetch-Dest') || '';
+      const hasAuthHeader = request.headers.has('Authorization') || request.headers.has('x-auth-token') || request.headers.has('x-system-key');
+
+      const isExplicitApiCall = url.pathname.startsWith('/api/') || 
+                                url.pathname.startsWith('/v1/core-sys-ops') || 
+                                url.pathname.startsWith('/waludo') || 
+                                url.pathname === '/maintain' || 
+                                url.pathname === '/version' ||
+                                (hasAuthHeader && !acceptHeader.includes('text/html'));
+
+      const isPageNavigation = secFetchDest === 'document' || 
+                               acceptHeader.includes('text/html') || 
+                               (!isExplicitApiCall && !url.pathname.includes('.'));
+
+      if (isPageNavigation) {
+        try {
+          const indexUrl = new URL('/index.html', request.url);
+          const indexRes = await env.ASSETS.fetch(new Request(indexUrl.toString(), request));
+          if (indexRes && indexRes.status === 200) {
+            return indexRes;
+          }
+        } catch (e) {}
+      }
+
+      // 5. Forward API calls to Dedicated Backend if Configured
+      const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
+      if (backendUrl && isExplicitApiCall) {
         const targetUrl = new URL(url.pathname + url.search, backendUrl);
         const newHeaders = new Headers(request.headers);
         newHeaders.set('Origin', url.origin);
@@ -91,12 +131,10 @@ export default {
           resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
           resHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, x-system-key');
           return new Response(res.body, { status: res.status, headers: resHeaders });
-        } catch (e) {
-          // If proxy fails, fallback to autonomous responses below
-        }
+        } catch (e) {}
       }
 
-      // 3. WAludo Autonomous Admin API Engine
+      // 6. WAludo Autonomous Admin API Engine (Responds to AJAX calls from React)
       // Health / Status
       if (url.pathname.includes('/health') || url.pathname.includes('/waludo/status')) {
         return jsonResponse({
@@ -121,7 +159,7 @@ export default {
         });
       }
 
-      // Admin Dashboard Stats
+      // Admin Dashboard Stats (AJAX call)
       if (url.pathname.includes('/dashboard')) {
         return jsonResponse({
           totalUsers: 1,
@@ -140,7 +178,7 @@ export default {
         });
       }
 
-      // Admin Customers & Users
+      // Admin Customers & Users (AJAX call)
       if (url.pathname.includes('/all-users') || url.pathname.includes('/users') || url.pathname.includes('/user-search')) {
         const userList = [
           {
@@ -262,6 +300,11 @@ export default {
         });
       }
 
+      // Version
+      if (url.pathname === '/version' || url.pathname === '/api/version') {
+        return jsonResponse({ version: '1.0.5', appName: 'WAludo' });
+      }
+
       // Admins Management
       if (url.pathname.includes('/management/admins') || url.pathname.includes('/admins')) {
         return jsonResponse({
@@ -276,39 +319,25 @@ export default {
         return jsonResponse({ success: true, message: 'Wallet balance updated successfully' });
       }
 
-      // Result
+      // Results
       if (url.pathname.includes('/client/results') || url.pathname.includes('/SuccessRequests')) {
         return jsonResponse({ results: [], total: 0, data: [] });
       }
 
       // Generic API Fallback
-      if (isApiRoute) {
+      if (isExplicitApiCall) {
         return jsonResponse({ success: true, data: [] });
       }
 
-      // 4. Static Assets with explicit SPA fallback
-      let assetRes;
-      try {
-        assetRes = await env.ASSETS.fetch(request);
-      } catch (e) {
-        assetRes = null;
-      }
-
-      // If missing file or 404 and not a static asset with extension, serve index.html
-      if (!assetRes || assetRes.status === 404) {
-        if (!url.pathname.includes('.')) {
-          const indexUrl = new URL('/index.html', request.url);
-          return await env.ASSETS.fetch(new Request(indexUrl.toString(), request));
-        }
-      }
-
-      return assetRes || new Response('Not Found', { status: 404 });
+      // Default fallback: Always serve React index.html
+      const fallbackUrl = new URL('/index.html', request.url);
+      return await env.ASSETS.fetch(new Request(fallbackUrl.toString(), request));
     } catch (globalErr) {
       try {
         const fallbackUrl = new URL('/index.html', request.url);
         return await env.ASSETS.fetch(new Request(fallbackUrl.toString(), request));
       } catch (finalErr) {
-        return new Response('WAludo Admin Error: ' + globalErr.message, { status: 500 });
+        return new Response('WAludo Admin Application Error: ' + globalErr.message, { status: 500 });
       }
     }
   }
