@@ -12,7 +12,7 @@ try {
 } catch (dnsErr) {}
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
-const DB_NAME = process.env.DB_NAME || 'ludo_league_online';
+const DB_NAME = process.env.DB_NAME || 'friendludo';
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
 const LOCAL_STORE_PATH = isServerless ? path.resolve('/tmp', 'db_store.json') : path.resolve(process.cwd(), 'scratch', 'db_store.json');
 
@@ -21,7 +21,7 @@ let db = null;
 let isConnected = false;
 let isConnecting = false;
 
-// Default initial state
+// Default initial state for WAludo
 const defaultStore = {
   users: [],
   holdGames: [],
@@ -33,7 +33,7 @@ const defaultStore = {
   bonuses: [],
   penalties: [],
   settings: {
-    upiId: 'ludoleague@icici',
+    upiId: 'waludo@upi',
     imbClientId: process.env.IMB_CLIENT_ID || '',
     imbClientSecret: process.env.IMB_CLIENT_SECRET || '',
     imbMerchantCode: process.env.IMB_MERCHANT_CODE || '',
@@ -42,9 +42,9 @@ const defaultStore = {
     maxDeposit: 15000,
     minWithdrawal: 100,
     maxWithdrawal: 25000,
-    whatsappNumber: '+919876543210',
-    telegramLink: 'https://t.me/ludoleagueonline',
-    notice: 'Welcome to Ludo League Online Admin & Player Portal. Instant 24x7 payouts.',
+    whatsappNumber: '+919828786246',
+    telegramLink: 'https://t.me/WAludo',
+    notice: 'Welcome to WAludo Admin & Player Portal. Instant 24x7 payouts.',
     maintenanceMode: false
   },
   admins: [
@@ -84,14 +84,14 @@ const defaultStore = {
     requestedChallenge: false,
     rezorPayBankPayout: false,
     rezorPayUpiPayout: false,
-    setAlertMessage: 'Ludo League Online - 24x7 Customer Support WhatsApp: 8076214367',
+    setAlertMessage: 'WAludo - 24x7 Customer Support WhatsApp: 9828786246',
     setChallenge: false,
-    setMessage: 'Welcome to Ludo League Online!',
+    setMessage: 'Welcome to WAludo!',
     spinner: true,
     upiPayout: true,
     upisellChips: true,
     version: '1.0.5',
-    wpSupport: '8076214367',
+    wpSupport: '9828786246',
     bankAccountThreshold: 3000,
     maxSellAmount: 50000,
     minSellAmount: 195,
@@ -153,8 +153,8 @@ export async function connectMongo() {
   isConnecting = true;
   try {
     client = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 2000,
-      connectTimeoutMS: 2000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
       maxPoolSize: 10,
       minPoolSize: 1
     });

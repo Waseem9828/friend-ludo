@@ -6,8 +6,7 @@ const url = require('url');
 
 const PORT = process.env.PORT || 5002;
 const HOST = '0.0.0.0';
-const BACKEND_HOST = 'apiv2.friendludo.com';
-const LIVE_ADMIN_ORIGIN = 'https://akadmin2.friendludo.com';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:5003';
 const STATIC_DIR = __dirname;
 
 process.on('uncaughtException', (err) => {
@@ -55,22 +54,26 @@ function serveFile(res, filePath) {
 }
 
 function proxyApiRequest(req, res, targetPath) {
+  const parsedTarget = new URL(targetPath, BACKEND_URL);
+  const isHttps = parsedTarget.protocol === 'https:';
+  const transport = isHttps ? https : http;
+
   const options = {
-    hostname: BACKEND_HOST,
-    port: 443,
-    path: targetPath,
+    hostname: parsedTarget.hostname,
+    port: parsedTarget.port || (isHttps ? 443 : 80),
+    path: parsedTarget.pathname + parsedTarget.search,
     method: req.method,
     headers: {
       ...req.headers,
-      host: BACKEND_HOST,
-      origin: LIVE_ADMIN_ORIGIN,
-      referer: `${LIVE_ADMIN_ORIGIN}/`,
+      host: parsedTarget.host,
+      origin: 'http://localhost:' + PORT,
+      referer: 'http://localhost:' + PORT + '/',
     },
   };
 
   delete options.headers['cookie'];
 
-  const proxyReq = https.request(options, (proxyRes) => {
+  const proxyReq = transport.request(options, (proxyRes) => {
     const headers = { ...proxyRes.headers };
     headers['access-control-allow-origin'] = '*';
     headers['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH';
@@ -81,42 +84,14 @@ function proxyApiRequest(req, res, targetPath) {
   });
 
   proxyReq.on('error', (err) => {
-    console.error(`[API Proxy Error] ${req.method} ${targetPath}:`, err.message);
+    console.error(`[WAludo Admin Proxy Error] ${req.method} ${targetPath}:`, err.message);
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Bad Gateway connecting to backend API', details: err.message }));
+      res.end(JSON.stringify({ error: 'Bad Gateway connecting to WAludo backend API', details: err.message }));
     }
   });
 
   req.pipe(proxyReq);
-}
-
-function fetchRemoteAsset(reqUrlPath, localPath, res) {
-  const remoteUrl = `${LIVE_ADMIN_ORIGIN}${reqUrlPath}`;
-  console.log(`[Asset Fallback] Fetching ${remoteUrl} -> ${localPath}`);
-
-  https.get(remoteUrl, (remoteRes) => {
-    if (remoteRes.statusCode === 200) {
-      fs.mkdirSync(path.dirname(localPath), { recursive: true });
-      const fileStream = fs.createWriteStream(localPath);
-      remoteRes.pipe(fileStream);
-
-      const ext = path.extname(localPath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || remoteRes.headers['content-type'] || 'application/octet-stream';
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Access-Control-Allow-Origin': '*',
-      });
-      remoteRes.pipe(res);
-    } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('404 Not Found');
-    }
-  }).on('error', (err) => {
-    console.error(`[Asset Fetch Error] ${reqUrlPath}:`, err.message);
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('404 Not Found');
-  });
 }
 
 const server = http.createServer((req, res) => {
@@ -134,10 +109,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 1. API Proxy: /api/* -> https://apiv2.friendludo.com/api/*
-  if (pathname.startsWith('/api')) {
-    const targetPath = parsedUrl.path; // includes query string
-    console.log(`[API ${req.method}] ${pathname}`);
+  // 1. API Proxy to WAludo Backend
+  if (
+    pathname.startsWith('/api') || 
+    pathname.startsWith('/admin/api') || 
+    pathname.startsWith('/v1/core-sys-ops') || 
+    pathname.startsWith('/waludo') ||
+    pathname === '/maintain' || 
+    pathname === '/version'
+  ) {
+    const targetPath = parsedUrl.path;
+    console.log(`[WAludo Admin API ${req.method}] ${pathname}`);
     proxyApiRequest(req, res, targetPath);
     return;
   }
@@ -151,13 +133,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 3. Fallback for missing static assets
-  if (pathname.startsWith('/static/') || pathname.includes('.')) {
-    fetchRemoteAsset(pathname, filePath, res);
-    return;
-  }
-
-  // 4. SPA Fallback for client-side routing (/admin/dashboard, /admin/users, etc.)
+  // 3. SPA Fallback for client-side routing (/admin/dashboard, /admin/users, etc.)
   const indexPath = path.join(STATIC_DIR, 'index.html');
   if (fs.existsSync(indexPath)) {
     serveFile(res, indexPath);
@@ -169,7 +145,9 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`FriendLudo Admin Server running on http://${HOST}:${PORT}`);
-  console.log(`Local UI: http://localhost:${PORT}/admin/login`);
-  console.log(`Proxying /api to https://${BACKEND_HOST}/api with Origin: ${LIVE_ADMIN_ORIGIN}`);
+  console.log(`=======================================================`);
+  console.log(`🚀 WAludo Admin Server running on http://${HOST}:${PORT}`);
+  console.log(`🌐 Local UI: http://localhost:${PORT}/admin/dashboard`);
+  console.log(`📡 Connected to WAludo Backend: ${BACKEND_URL}`);
+  console.log(`=======================================================`);
 });

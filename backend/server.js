@@ -67,7 +67,7 @@ app.get(['/version', '/api/version'], (req, res) => {
 app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'online',
-    appName: 'FriendLudo Fully Autonomous Backend Engine',
+    appName: 'WAludo Fully Autonomous Backend Engine',
     timestamp: new Date().toISOString()
   });
 });
@@ -77,6 +77,7 @@ app.use('/api', apiRouter);
 app.use('/payment', apiRouter);
 app.use('/transaction', apiRouter);
 app.use('/v1/core-sys-ops', apiRouter);
+app.use('/waludo', apiRouter);
 app.use('/', apiRouter);
 
 // Socket.IO Matchmaking & Real-time Game Hub
@@ -115,7 +116,7 @@ app.use((err, req, res, next) => {
 
 httpServer.listen(PORT, '0.0.0.0', async () => {
   console.log(`=======================================================`);
-  console.log(`🚀 FriendLudo Standalone Backend Server Running!`);
+  console.log(`🚀 WAludo Standalone Backend Server Running!`);
   console.log(`🌐 Port: ${PORT}`);
   console.log(`📡 REST API & Socket.IO: http://localhost:${PORT}`);
   console.log(`=======================================================`);

@@ -1,8 +1,8 @@
 /**
- * Friend Ludo Local Development & Application Runner Server
+ * WAludo Local Development & Application Runner Server
  * - Serves frontend SPA assets (HTML, CSS, JS, manifest, icons) with SPA routing fallback.
- * - Proxies /api/* requests to https://apiv2.friendludo.com/api/* with required CORS and Referer headers.
- * - Proxies /socket.io/* WebSocket connections to socketv2.friendludo.com.
+ * - Proxies /api/*, /maintain, /version, /waludo/* to WAludo Backend (http://127.0.0.1:5003).
+ * - Proxies /socket.io/* WebSocket & polling to WAludo Backend.
  * - Robust error handling (no unhandled ECONNRESET crashes).
  */
 
@@ -15,8 +15,7 @@ const os = require('os');
 const PORT = process.env.PORT || 5001;
 const HOST = '0.0.0.0';
 const ROOT_DIR = __dirname;
-const REMOTE_API = 'apiv2.friendludo.com';
-const REMOTE_SOCKET = 'socketv2.friendludo.com';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:5003';
 
 // Prevent crashes on client disconnects / network resets
 process.on('uncaughtException', (err) => {
@@ -79,26 +78,30 @@ function serveFile(res, filePath) {
   });
 }
 
-function proxyRequest(req, res, targetHost, targetPath) {
+function proxyRequest(req, res, targetUrlStr) {
   req.on('error', () => {});
   res.on('error', () => {});
 
+  const parsedTarget = new URL(targetUrlStr);
+  const isHttps = parsedTarget.protocol === 'https:';
+  const transport = isHttps ? https : http;
+
   const options = {
-    hostname: targetHost,
-    port: 443,
-    path: targetPath,
+    hostname: parsedTarget.hostname,
+    port: parsedTarget.port || (isHttps ? 443 : 80),
+    path: parsedTarget.pathname + parsedTarget.search,
     method: req.method,
     headers: {
       ...req.headers,
-      host: targetHost,
-      origin: 'https://friendludo.com',
-      referer: 'https://friendludo.com/'
+      host: parsedTarget.host,
+      origin: 'http://localhost:' + PORT,
+      referer: 'http://localhost:' + PORT + '/'
     }
   };
 
   delete options.headers['connection'];
 
-  const proxyReq = https.request(options, (proxyRes) => {
+  const proxyReq = transport.request(options, (proxyRes) => {
     proxyRes.on('error', () => {});
 
     const headers = { ...proxyRes.headers };
@@ -118,7 +121,7 @@ function proxyRequest(req, res, targetHost, targetPath) {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
       });
-      res.end(JSON.stringify({ success: false, message: 'Proxy Gateway Error: ' + err.message }));
+      res.end(JSON.stringify({ success: false, message: 'WAludo Backend Gateway Error: ' + err.message }));
     }
   });
 
@@ -143,28 +146,25 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
 
-  // 1. API proxy
-  if (pathname.startsWith('/api/') || pathname === '/api') {
-    return proxyRequest(req, res, REMOTE_API, req.url);
+  // 1. API and Realtime proxy to WAludo Backend
+  if (
+    pathname.startsWith('/api') || 
+    pathname.startsWith('/waludo') || 
+    pathname === '/maintain' || 
+    pathname === '/version' || 
+    pathname.startsWith('/socket.io')
+  ) {
+    const backendTarget = new URL(url.pathname + url.search, BACKEND_URL);
+    return proxyRequest(req, res, backendTarget.toString());
   }
 
-  // 2. Socket.io polling fallback
-  if (pathname.startsWith('/socket.io/')) {
-    return proxyRequest(req, res, REMOTE_SOCKET, req.url);
-  }
-
-  // 3. Static file resolution
+  // 2. Static file resolution
   let safePath = path.normalize(decodeURIComponent(pathname)).replace(/^(\.\.[\/\\])+/, '');
   let filePath = path.join(ROOT_DIR, safePath);
 
   fs.stat(filePath, (err, stats) => {
     if (!err && stats.isFile()) {
       return serveFile(res, filePath);
-    }
-
-    // If it is an asset or media file not found locally, proxy from friendludo.com
-    if (pathname.startsWith('/assets/') || pathname.startsWith('/static/media/') || pathname.startsWith('/images/')) {
-      return proxyRequest(req, res, 'friendludo.com', req.url);
     }
 
     // Default to index.html for SPA routing

@@ -2924,5 +2924,174 @@ router.post(['/admin/register', '/admin/signup', '/admin/admin', '/admin/managem
   res.json({ success: true, message: 'Admin account created successfully', admin: newAdmin, user: newAdmin, admins: store.admins });
 });
 
+// ==========================================
+// 5. WALUDO SPECIFIC BRAND & COMPATIBILITY ENDPOINTS
+// ==========================================
+router.get(['/waludo/info', '/waludo/status', '/api/waludo/info', '/api/waludo/status', '/api/waludo'], (req, res) => {
+  const store = getStore();
+  res.json({
+    success: true,
+    brand: 'WAludo',
+    appName: 'WAludo',
+    version: store.maintain?.version || '1.0.5',
+    status: 'online',
+    supportWhatsApp: '9828786246',
+    telegram: 'https://t.me/WAludo',
+    upiId: store.settings?.upiId || 'waludo@upi',
+    database: getDbStatus(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Admin RTK Query Compatibility Endpoints
+router.get(['/admin/all-users/:page', '/admin/all-users/:page/:filter', '/admin/all-users/:page/:filter/:name'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const search = (req.query.search || req.params.name || '').toLowerCase();
+  let users = store.users || [];
+  if (search) {
+    users = users.filter(u => 
+      (u.Name && u.Name.toLowerCase().includes(search)) || 
+      (u.name && u.name.toLowerCase().includes(search)) || 
+      (u.Phone && u.Phone.includes(search)) || 
+      (u.phone && u.phone.includes(search))
+    );
+  }
+  res.json({ users, total: users.length, totalUsers: users.length, data: users });
+});
+
+router.get(['/admin/user-search/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const users = (store.users || []).filter(u => 
+    (u.Name && u.Name.toLowerCase().includes(q)) || 
+    (u.name && u.name.toLowerCase().includes(q)) || 
+    (u.Phone && u.Phone.includes(q)) || 
+    (u.phone && u.phone.includes(q))
+  );
+  res.json({ users, total: users.length, data: users });
+});
+
+router.get(['/admin/transaction/:id', '/admin/transaction/:page/:filter'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const id = req.params.id;
+  const userDeposits = (store.deposits || []).filter(d => d.userId === id || d.user_id === id);
+  const userWithdrawals = (store.withdrawals || []).filter(w => w.userId === id || w.user_id === id);
+  const allTx = [...userDeposits, ...userWithdrawals].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  res.json({ transactions: allTx, data: allTx, total: allTx.length });
+});
+
+router.get(['/admin/ludo-name/:id'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const user = (store.users || []).find(u => u._id === req.params.id || u.id === req.params.id);
+  res.json({ success: true, ludoName: user ? (user.Name || user.name || 'Player') : 'Player' });
+});
+
+router.get(['/admin/hold-challenge/:page'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const games = store.holdGames || [];
+  res.json({ games, total: games.length, data: games });
+});
+
+router.get(['/challenge/HoldGamesSearch/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const games = (store.holdGames || []).filter(g => 
+    (g.Room_code && g.Room_code.toLowerCase().includes(q)) ||
+    (g.creatorName && g.creatorName.toLowerCase().includes(q))
+  );
+  res.json(games);
+});
+
+router.get(['/admin/all-challenge/:page'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const games = [...(store.holdGames || []), ...(store.resolvedGames || [])];
+  res.json({ games, total: games.length, data: games });
+});
+
+router.get(['/admin/challenge-search/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const games = [...(store.holdGames || []), ...(store.resolvedGames || [])].filter(g => 
+    (g.Room_code && g.Room_code.toLowerCase().includes(q)) ||
+    (g.creatorName && g.creatorName.toLowerCase().includes(q))
+  );
+  res.json(games);
+});
+
+router.get(['/admin/deposits/:page'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const deposits = store.deposits || [];
+  res.json({ deposits, total: deposits.length, data: deposits });
+});
+
+router.get(['/admin/searchDeposits/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const deposits = (store.deposits || []).filter(d => 
+    (d.txnId && d.txnId.toLowerCase().includes(q)) ||
+    (d.phone && d.phone.includes(q))
+  );
+  res.json(deposits);
+});
+
+router.get(['/wallet/withDrawRequests/:page', '/admin/all-withdraw/:page'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const withdrawals = store.withdrawals || [];
+  res.json({ withdrawals, withDrawRequests: withdrawals, total: withdrawals.length, data: withdrawals });
+});
+
+router.get(['/wallet/searchwithDrawRequests/:query', '/admin/wr-search/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const withdrawals = (store.withdrawals || []).filter(w => 
+    (w.phone && w.phone.includes(q)) ||
+    (w.upiId && w.upiId.toLowerCase().includes(q))
+  );
+  res.json(withdrawals);
+});
+
+router.post(['/wallet/updateWR/:id', '/wallet/updateBankWR/:id'], verifySuperAdminStatus, async (req, res) => {
+  const store = getStore();
+  const w = (store.withdrawals || []).find(x => x._id === req.params.id || x.id === req.params.id);
+  const status = req.body?.status || 'Approved';
+  if (w) {
+    w.status = status;
+    if (status === 'Rejected' && !w.refunded) {
+      w.refunded = true;
+      const uid = w.userId || w.user_id;
+      if (uid) await atomicUpdateUserWallet(uid, w.amount, 'winningAmount');
+    }
+    await saveState();
+  }
+  res.json({ success: true, withdrawal: w });
+});
+
+router.get(['/result/SuccessRequests/:page'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const resolved = store.resolvedGames || [];
+  res.json({ results: resolved, total: resolved.length, data: resolved });
+});
+
+router.get(['/result/searchSuccessRequests/:query'], verifySuperAdminStatus, (req, res) => {
+  const store = getStore();
+  const q = decodeURIComponent(req.params.query || '').toLowerCase();
+  const resolved = (store.resolvedGames || []).filter(g => 
+    (g.Room_code && g.Room_code.toLowerCase().includes(q))
+  );
+  res.json(resolved);
+});
+
+router.all(['/client/results/:id'], (req, res) => {
+  res.json({ success: true, message: 'Result recorded' });
+});
+
+router.get(['/admin/bonus/:page'], verifySuperAdminStatus, (req, res) => {
+  res.json({ bonuses: getStore().bonuses || [] });
+});
+
+router.get(['/admin/penalty/:page'], verifySuperAdminStatus, (req, res) => {
+  res.json({ penalties: getStore().penalties || [] });
+});
+
 export default router;
 
