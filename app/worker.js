@@ -356,17 +356,18 @@ export default {
       const isApiRequest = url.pathname.startsWith('/api') || 
                            url.pathname.startsWith('/waludo') || 
                            url.pathname.startsWith('/auth') || 
-                           url.pathname.startsWith('/user/') || 
+                           url.pathname.startsWith('/user') || 
                            url.pathname.startsWith('/transaction') || 
                            url.pathname.startsWith('/payment') || 
                            url.pathname.startsWith('/challenges') || 
-                           url.pathname.startsWith('/game/') || 
-                           url.pathname.startsWith('/spin/') || 
+                           url.pathname.startsWith('/game') || 
+                           url.pathname.startsWith('/spin') || 
                            url.pathname.startsWith('/admin') || 
                            url.pathname.startsWith('/v1/core-sys-ops') || 
-                           url.pathname === '/maintain' || 
-                           url.pathname === '/version' || 
-                           url.pathname === '/health' || 
+                           url.pathname.startsWith('/maintain') || 
+                           url.pathname.startsWith('/version') || 
+                           url.pathname.startsWith('/health') || 
+                           url.pathname.startsWith('/settings') || 
                            (request.headers.get('Accept') || '').includes('application/json');
 
       if (!isApiRequest) {
@@ -504,53 +505,57 @@ export default {
         return jsonResponse({ success: true, message: 'Subscribed to WAludo notifications' });
       }
 
-      // Auth: OTP Request
-      if (url.pathname.includes('/auth/OTP') || url.pathname.includes('/auth/resendOTP')) {
-        let body = {};
-        try { body = await request.clone().json(); } catch (e) {}
-        const rawPhone = body.phone || body.Phone || body.mobile || url.searchParams.get('phone') || '';
-        const cleanPhone = rawPhone.toString().replace(/\D/g, '').slice(-10);
-
-        if (!cleanPhone || cleanPhone.length < 10) {
-          return jsonResponse({
-            status: 400,
-            success: false,
-            error: 'PHONE_REQUIRED',
-            message: '10-digit mobile number is required.'
-          }, 400);
-        }
-
-        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-        activeOtps.set(cleanPhone, {
-          code: otpCode,
-          expiresAt: Date.now() + 10 * 60 * 1000,
-          attempts: 0
-        });
-
-        // Dispatch real SMS via IMB communication API using static proxy 45.38.107.97
-        const dispatchRes = await dispatchImbSmsViaProxy(cleanPhone, otpCode);
-
-        return jsonResponse({
-          status: 200,
-          success: true,
-          data: 'OTP sent successfully!',
-          message: 'OTP sent successfully to your mobile number via SMS.',
-          dispatchStatus: dispatchRes?.success ? 'delivered' : 'pending',
-          serverIp: '45.38.107.97'
-        });
-      }
-
-      // Auth: Verify OTP / Login / Register (Creates complete account in MongoDB Atlas)
-      if (url.pathname.includes('/auth/confirmOTP') || url.pathname.includes('/auth/login') || url.pathname.includes('/auth/verifyOTP') || url.pathname.includes('/auth/signup') || url.pathname.includes('/auth/register')) {
+      // Auth: Unified OTP Request, Login, Verification, and Registration
+      if (
+        url.pathname.includes('/auth/login') ||
+        url.pathname.includes('/auth/OTP') ||
+        url.pathname.includes('/auth/resendOTP') ||
+        url.pathname.includes('/auth/confirmOTP') ||
+        url.pathname.includes('/auth/verifyOTP') ||
+        url.pathname.includes('/auth/signup') ||
+        url.pathname.includes('/auth/register')
+      ) {
         let body = {};
         try { body = await request.clone().json(); } catch (e) {}
 
-        const rawPhone = body.phone || body.Phone || body.mobile || '';
+        const rawPhone = body.phone || body.Phone || body.mobile || body.mobile_number || url.searchParams.get('phone') || '';
         const cleanPhone = rawPhone.toString().replace(/\D/g, '').slice(-10);
-        const rawOtp = body.otp || body.OTP || body.otp_code || body.otpCode || body.code || '';
-        const cleanOtp = rawOtp.toString().trim().replace(/\D/g, '');
+        const rawOtp = body.otp || body.OTP || body.otp_code || body.otpCode || body.code || body.verificationCode || '';
+        const cleanOtp = rawOtp ? rawOtp.toString().trim().replace(/\D/g, '') : '';
         const fullName = body.fullName || body.name || body.Name || body.username || '';
 
+        // Case A: NO OTP provided -> This is an OTP REQUEST (User entered phone and clicked "Login" / "Send OTP")
+        if (!cleanOtp) {
+          if (!cleanPhone || cleanPhone.length < 10) {
+            return jsonResponse({
+              status: 400,
+              success: false,
+              error: 'PHONE_REQUIRED',
+              message: '10-digit mobile number is required.'
+            }, 400);
+          }
+
+          const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+          activeOtps.set(cleanPhone, {
+            code: otpCode,
+            expiresAt: Date.now() + 10 * 60 * 1000,
+            attempts: 0
+          });
+
+          // Dispatch real SMS via IMB communication API using static proxy 45.38.107.97
+          const dispatchRes = await dispatchImbSmsViaProxy(cleanPhone, otpCode);
+
+          return jsonResponse({
+            status: 200,
+            success: true,
+            data: 'OTP sent successfully!',
+            message: 'OTP sent successfully to your mobile number via SMS.',
+            dispatchStatus: dispatchRes?.success ? 'delivered' : 'pending',
+            serverIp: '45.38.107.97'
+          });
+        }
+
+        // Case B: OTP IS provided -> This is OTP VERIFICATION (User entered 6-digit code)
         const record = activeOtps.get(cleanPhone);
         const isValid = cleanOtp === '123456' || (record && record.code === cleanOtp && Date.now() <= record.expiresAt);
 
@@ -799,6 +804,21 @@ export default {
       // Generic API Fallback
       return jsonResponse({ status: 200, success: true, data: [] });
     } catch (globalErr) {
+      if (
+        url.pathname.startsWith('/api') || 
+        url.pathname.startsWith('/auth') || 
+        url.pathname.startsWith('/maintain') || 
+        url.pathname.startsWith('/user') || 
+        url.pathname.startsWith('/transaction') || 
+        url.pathname.startsWith('/settings')
+      ) {
+        return jsonResponse({
+          status: 500,
+          success: false,
+          error: 'SERVER_ERROR',
+          message: globalErr.message
+        }, 500);
+      }
       try {
         const fallbackUrl = new URL('/index.html', request.url);
         return await env.ASSETS.fetch(new Request(fallbackUrl.toString(), request));
