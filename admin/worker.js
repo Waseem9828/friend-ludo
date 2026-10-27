@@ -200,7 +200,19 @@ export default {
           token,
           jwtToken: token,
           user: safeAdmin,
-          data: 'Login successful'
+          data: {
+            admin: {
+              _id: admin._id,
+              name: safeAdmin.name,
+              username: safeAdmin.username,
+              role: 'super_admin',
+              permissions: [{ id: 'all' }],
+              jwtToken: { jwtToken: token }
+            },
+            token: token,
+            role: 'super_admin'
+          },
+          message: 'Login successful'
         });
       }
 

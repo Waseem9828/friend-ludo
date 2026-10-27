@@ -35,9 +35,9 @@ export default function App() {
       <AuthProvider>
         <Router>
           <Routes>
-            {/* Direct Dashboard Access */}
-            <Route path="/admin/login" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/register" element={<Navigate to="/admin/dashboard" replace />} />
+            {/* Public Auth Routes */}
+            <Route path="/admin/login" element={<Login />} />
+            <Route path="/admin/register" element={<Navigate to="/admin/login" replace />} />
 
             {/* Protected Admin Routes */}
             <Route element={<ProtectedRoute />}>
