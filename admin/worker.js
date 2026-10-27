@@ -206,13 +206,24 @@ export default {
 
       // Admin Dashboard Metrics
       if (url.pathname.includes('/dashboard')) {
-        const db = await getMongoDb();
-        const usersCount = await db.collection('users').countDocuments({});
-        const holdGamesCount = await db.collection('hold_games').countDocuments({});
-        const totalGamesCount = await db.collection('resolved_games').countDocuments({});
-        const pendingDepositsCount = await db.collection('deposits').countDocuments({ status: { $regex: /pending/i } });
-        const pendingWithdrawalsCount = await db.collection('withdrawals').countDocuments({ status: { $regex: /pending/i } });
-        const pendingKycCount = await db.collection('users').countDocuments({ $or: [{ kycStatus: 'UNVERIFIED' }, { kycVerified: false }] });
+        let usersCount = 0;
+        let holdGamesCount = 0;
+        let totalGamesCount = 0;
+        let pendingDepositsCount = 0;
+        let pendingWithdrawalsCount = 0;
+        let pendingKycCount = 0;
+
+        try {
+          const db = await getMongoDb();
+          usersCount = await db.collection('users').countDocuments({});
+          holdGamesCount = await db.collection('hold_games').countDocuments({});
+          totalGamesCount = await db.collection('resolved_games').countDocuments({});
+          pendingDepositsCount = await db.collection('deposits').countDocuments({ status: { $in: ['pending', 'PENDING'] } });
+          pendingWithdrawalsCount = await db.collection('withdrawals').countDocuments({ status: { $in: ['pending', 'PENDING'] } });
+          pendingKycCount = await db.collection('users').countDocuments({ $or: [{ kycStatus: 'UNVERIFIED' }, { kycVerified: false }] });
+        } catch (e) {
+          console.error('Dashboard count notice:', e.message);
+        }
 
         return jsonResponse({
           status: 200,
@@ -233,8 +244,11 @@ export default {
 
       // Users List
       if (url.pathname.includes('/users') || url.pathname.includes('/all-users') || url.pathname.includes('/user-search')) {
-        const db = await getMongoDb();
-        const users = await db.collection('users').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        let users = [];
+        try {
+          const db = await getMongoDb();
+          users = await db.collection('users').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({
           status: 200,
           users,
@@ -248,10 +262,14 @@ export default {
       if (url.pathname.includes('/details/') || url.pathname.includes('/admin/user/')) {
         const pathParts = url.pathname.split('/');
         const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
-        const db = await getMongoDb();
-        const user = await db.collection('users').findOne({
-          $or: [{ _id: userId }, { id: userId }, { phone: userId }]
-        });
+        let user = null;
+        try {
+          const db = await getMongoDb();
+          user = await db.collection('users').findOne({
+            $or: [{ _id: userId }, { id: userId }, { phone: userId }]
+          });
+        } catch (e) {}
+
         if (!user) {
           return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
         }
@@ -265,75 +283,88 @@ export default {
         let body = {};
         try { body = await request.clone().json(); } catch (e) {}
         const amount = Number(body.amount || body.wallet || 0);
-        const type = body.type || 'add'; // 'add' or 'deduct'
+        const type = body.type || 'add';
 
-        const db = await getMongoDb();
-        const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
-        if (!user) {
-          return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
-        }
-
-        const currentWallet = Number(user.wallet || 0);
-        const newWallet = type === 'deduct' ? Math.max(0, currentWallet - amount) : (currentWallet + amount);
-        await db.collection('users').updateOne(
-          { _id: user._id },
-          {
-            $set: {
-              wallet: newWallet,
-              depositCash: newWallet,
-              totalBalance: newWallet,
-              updatedAt: new Date().toISOString()
-            }
+        try {
+          const db = await getMongoDb();
+          const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
+          if (!user) {
+            return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
           }
-        );
 
-        return jsonResponse({
-          status: 200,
-          success: true,
-          message: 'Wallet balance updated successfully.',
-          wallet: newWallet
-        });
+          const currentWallet = Number(user.wallet || 0);
+          const newWallet = type === 'deduct' ? Math.max(0, currentWallet - amount) : (currentWallet + amount);
+          await db.collection('users').updateOne(
+            { _id: user._id },
+            {
+              $set: {
+                wallet: newWallet,
+                depositCash: newWallet,
+                totalBalance: newWallet,
+                updatedAt: new Date().toISOString()
+              }
+            }
+          );
+
+          return jsonResponse({
+            status: 200,
+            success: true,
+            message: 'Wallet balance updated successfully.',
+            wallet: newWallet
+          });
+        } catch (e) {
+          return jsonResponse({ status: 500, success: false, error: e.message }, 500);
+        }
       }
 
       // Block / Unblock User
       if (url.pathname.includes('/block/')) {
         const pathParts = url.pathname.split('/');
         const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
-        const db = await getMongoDb();
-        const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
-        if (!user) {
-          return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
+        try {
+          const db = await getMongoDb();
+          const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
+          if (!user) {
+            return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
+          }
+
+          const newBlockedStatus = !Boolean(user.isBlocked);
+          await db.collection('users').updateOne(
+            { _id: user._id },
+            { $set: { isBlocked: newBlockedStatus, updatedAt: new Date().toISOString() } }
+          );
+
+          return jsonResponse({
+            status: 200,
+            success: true,
+            message: newBlockedStatus ? 'User blocked successfully.' : 'User unblocked successfully.',
+            isBlocked: newBlockedStatus
+          });
+        } catch (e) {
+          return jsonResponse({ status: 500, success: false, error: e.message }, 500);
         }
-
-        const newBlockedStatus = !Boolean(user.isBlocked);
-        await db.collection('users').updateOne(
-          { _id: user._id },
-          { $set: { isBlocked: newBlockedStatus, updatedAt: new Date().toISOString() } }
-        );
-
-        return jsonResponse({
-          status: 200,
-          success: true,
-          message: newBlockedStatus ? 'User blocked successfully.' : 'User unblocked successfully.',
-          isBlocked: newBlockedStatus
-        });
       }
 
       // Delete User
       if (url.pathname.includes('/delete-user/') || (url.pathname.includes('/users/') && request.method === 'DELETE')) {
         const pathParts = url.pathname.split('/');
         const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
-        const db = await getMongoDb();
-        await db.collection('users').deleteOne({ $or: [{ _id: userId }, { id: userId }] });
+        try {
+          const db = await getMongoDb();
+          await db.collection('users').deleteOne({ $or: [{ _id: userId }, { id: userId }] });
+        } catch (e) {}
         return jsonResponse({ status: 200, success: true, message: 'User deleted successfully.' });
       }
 
       // Settings & Notices & Commission & Gateways (Read & Write to MongoDB Atlas)
       if (url.pathname.includes('/settings') || url.pathname === '/maintain' || url.pathname === '/api/maintain') {
-        const db = await getMongoDb();
-        const maintainCol = db.collection('maintain');
+        let maintainCol = null;
+        try {
+          const db = await getMongoDb();
+          maintainCol = db.collection('maintain');
+        } catch (e) {}
 
-        // Update Settings (When Admin edits notice, game commission, or gateways)
+        // Update Settings
         if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
           let body = {};
           try { body = await request.clone().json(); } catch (e) {}
@@ -344,11 +375,15 @@ export default {
           };
           delete updateFields._id;
 
-          await maintainCol.updateOne(
-            { _id: 'maintain_config' },
-            { $set: updateFields },
-            { upsert: true }
-          );
+          if (maintainCol) {
+            try {
+              await maintainCol.updateOne(
+                { _id: 'maintain_config' },
+                { $set: updateFields },
+                { upsert: true }
+              );
+            } catch (e) {}
+          }
 
           return jsonResponse({
             status: 200,
@@ -359,8 +394,12 @@ export default {
         }
 
         // Fetch Settings
-        let doc = await maintainCol.findOne({ _id: 'maintain_config' });
-        if (!doc) doc = await maintainCol.findOne({});
+        let doc = null;
+        if (maintainCol) {
+          try {
+            doc = await maintainCol.findOne({ _id: 'maintain_config' }) || await maintainCol.findOne({});
+          } catch (e) {}
+        }
 
         const settingsData = {
           _id: 'maintain_config',
@@ -401,38 +440,53 @@ export default {
 
       // Deposits List
       if (url.pathname.includes('/deposits') || url.pathname.includes('/pending-deposit')) {
-        const db = await getMongoDb();
-        const deposits = await db.collection('deposits').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        let deposits = [];
+        try {
+          const db = await getMongoDb();
+          deposits = await db.collection('deposits').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({ status: 200, deposits, total: deposits.length, data: deposits });
       }
 
       // Withdrawals List
       if (url.pathname.includes('/withDrawRequests') || url.pathname.includes('/withdrawal-requests') || url.pathname.includes('/all-withdraw')) {
-        const db = await getMongoDb();
-        const withdrawals = await db.collection('withdrawals').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        let withdrawals = [];
+        try {
+          const db = await getMongoDb();
+          withdrawals = await db.collection('withdrawals').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({ status: 200, withdrawals, withDrawRequests: withdrawals, total: withdrawals.length, data: withdrawals });
       }
 
       // Hold Games & Challenges
       if (url.pathname.includes('/hold-games') || url.pathname.includes('/hold-challenge')) {
-        const db = await getMongoDb();
-        const games = await db.collection('hold_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        let games = [];
+        try {
+          const db = await getMongoDb();
+          games = await db.collection('hold_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({ status: 200, games, total: games.length, data: games });
       }
 
       // Total & All Games
       if (url.pathname.includes('/total-games') || url.pathname.includes('/all-challenge')) {
-        const db = await getMongoDb();
-        const games = await db.collection('resolved_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        let games = [];
+        try {
+          const db = await getMongoDb();
+          games = await db.collection('resolved_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({ status: 200, games, total: games.length, data: games });
       }
 
       // Pending KYC List
       if (url.pathname.includes('/pending_kyc') || url.pathname.includes('/kyc')) {
-        const db = await getMongoDb();
-        const kycs = await db.collection('users').find({
-          $or: [{ kycStatus: 'UNVERIFIED' }, { kycStatus: 'pending' }, { kycVerified: false }]
-        }).sort({ createdAt: -1 }).limit(100).toArray();
+        let kycs = [];
+        try {
+          const db = await getMongoDb();
+          kycs = await db.collection('users').find({
+            $or: [{ kycStatus: 'UNVERIFIED' }, { kycStatus: 'pending' }, { kycVerified: false }]
+          }).sort({ createdAt: -1 }).limit(100).toArray();
+        } catch (e) {}
         return jsonResponse({ status: 200, kycs, total: kycs.length, data: kycs });
       }
 
@@ -446,8 +500,12 @@ export default {
 
       // Admins Profile & Management
       if (url.pathname.includes('/management/admins') || url.pathname.includes('/admin/admin') || url.pathname.includes('/admins')) {
-        const db = await getMongoDb();
-        const admin = await db.collection('admins').findOne({ _id: 'adm_waseem_1' });
+        let admin = null;
+        try {
+          const db = await getMongoDb();
+          admin = await db.collection('admins').findOne({ _id: 'adm_waseem_1' });
+        } catch (e) {}
+
         const safe = {
           _id: admin?._id || 'adm_waseem_1',
           name: admin?.name || 'Waseem akram',
