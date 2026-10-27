@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ludo Tournament Match - Testing Page</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px 15px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header {
+      text-align: center;
+      padding: 5px 0;
+    }
+
+    header h1 {
+      font-size: 22px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .backend-pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-top: 6px;
+      transition: all 0.3s;
+    }
+
+    .pill-connected {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+      border: 1px solid #22c55e;
+    }
+
+    .pill-offline {
+      background: rgba(234, 179, 8, 0.2);
+      color: #facc15;
+      border: 1px solid #eab308;
+    }
+
+    /* Role Switcher */
+    .role-bar {
+      display: flex;
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .role-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .role-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .match-info-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .badge-live {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+      border: 1px solid #22c55e;
+    }
+
+    .badge-dispute {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid #ef4444;
+    }
+
+    .badge-wait {
+      background: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+      border: 1px solid #d97706;
+    }
+
+    /* Input & Code Display */
+    .code-input-wrapper {
+      margin: 16px 0;
+      text-align: center;
+    }
+
+    .code-input {
+      width: 100%;
+      padding: 14px;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 6px;
+      text-align: center;
+      background: #0f172a;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      color: #38bdf8;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .code-input:focus {
+      border-color: #38bdf8;
+    }
+
+    .room-display-box {
+      background: #0f172a;
+      border: 2px dashed #38bdf8;
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+      margin: 15px 0;
+    }
+
+    .room-code-large {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: #38bdf8;
+      user-select: all;
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 9px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-secondary { background: #334155; color: white; }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .btn-group .btn {
+      flex: 1;
+    }
+
+    /* Status Banner */
+    .alert {
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      margin: 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-success { background: rgba(34, 197, 94, 0.15); border: 1px solid #16a34a; color: #4ade80; }
+    .alert-danger { background: rgba(220, 38, 38, 0.15); border: 1px solid #dc2626; color: #f87171; }
+    .alert-info { background: rgba(56, 189, 248, 0.15); border: 1px solid #0284c7; color: #38bdf8; }
+
+    /* Live Events Log */
+    .log-box {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 120px;
+      overflow-y: auto;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .log-item {
+      margin-bottom: 4px;
+    }
+    .log-item.success { color: #4ade80; }
+    .log-item.warn { color: #f87171; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 50;
+    }
+
+    .modal {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>🎲 Ludo Tournament Match</h1>
+    <div id="backendPill" class="backend-pill pill-offline">Connecting to Backend...</div>
+  </header>
+
+  <!-- Role Switcher -->
+  <div class="role-bar">
+    <button class="role-btn active" id="btnRoleHost" onclick="switchRole('HOST')">👑 Player A (Host)</button>
+    <button class="role-btn" id="btnRoleJoiner" onclick="switchRole('JOINER')">🎮 Player B (Joiner)</button>
+  </div>
+
+  <!-- Main Card -->
+  <div class="card">
+    <div class="match-info-header">
+      <div>
+        <div id="matchTitle" style="font-weight: 700; font-size: 15px;">Match #LK-8092</div>
+        <div style="font-size: 12px; color: var(--text-muted);">Entry: ₹50 | Prize: ₹90</div>
+      </div>
+      <div id="matchBadge" class="badge badge-wait">WAITING FOR CODE</div>
+    </div>
+
+    <!-- HOST VIEW -->
+    <div id="hostSection">
+      <p style="font-size: 14px; color: var(--text-muted);">
+        1. Ludo King app kholein aur <b>Play with Friends > Create</b> karein.<br>
+        2. Wahan mila <b>8-digit Room Code</b> yahan enter karein:
+      </p>
+
+      <div class="code-input-wrapper">
+        <input 
+          type="text" 
+          id="hostCodeInput" 
+          class="code-input" 
+          maxlength="8" 
+          placeholder="00000000"
+          oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+        >
+      </div>
+
+      <button id="btnSubmitCode" class="btn btn-primary" onclick="submitHostCode()">
+        📤 Submit Room Code
+      </button>
+
+      <div id="hostAlert" style="display:none;" class="alert"></div>
+    </div>
+
+    <!-- JOINER VIEW -->
+    <div id="joinerSection" style="display: none;">
+      <p style="font-size: 14px; color: var(--text-muted);">
+        Host ka room code yahan aayega. Code copy karke Ludo King mein join karein:
+      </p>
+
+      <div class="room-display-box">
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">ROOM CODE:</div>
+        <div id="joinerCodeDisplay" class="room-code-large">WAITING...</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Status: <span id="joinerStatusText" style="color: #fbbf24;">Waiting for Host</span></div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="copyRoomCode()">
+          📋 Copy Code
+        </button>
+        <button class="btn btn-primary" onclick="openLudoApp()">
+          🚀 Open Ludo King
+        </button>
+      </div>
+
+      <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 12px;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">Kya code sahi kaam kiya?</p>
+        <div class="btn-group">
+          <button class="btn btn-success" onclick="confirmSuccess()">
+            ✅ Sahi Code (Joined)
+          </button>
+          <button class="btn btn-danger" onclick="openDisputeModal()">
+            ❌ Galat Code (Dispute)
+          </button>
+        </div>
+      </div>
+
+      <div id="joinerAlert" style="display:none;" class="alert"></div>
+    </div>
+  </div>
+
+  <!-- Actions Bar -->
+  <div style="display: flex; gap: 10px;">
+    <button class="btn btn-secondary" style="font-size: 13px; padding: 8px;" onclick="syncMatchStatus()">
+      🔄 Refresh Status
+    </button>
+    <button class="btn btn-secondary" style="font-size: 13px; padding: 8px;" onclick="resetTestMatch()">
+      ♻️ Reset Match
+    </button>
+  </div>
+
+  <!-- Live Simulation Logs -->
+  <div class="card" style="padding: 14px;">
+    <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #38bdf8;">
+      📜 Activity Log:
+    </div>
+    <div class="log-box" id="activityLogs">
+      <div class="log-item">System loaded. Ready.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Dispute Modal -->
+<div class="modal-overlay" id="disputeModal">
+  <div class="modal">
+    <h3 style="color: #f87171; margin-bottom: 8px;">⚠️ Report Wrong Room Code</h3>
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+      Kripya wajah chunein ki code kyun galat hai:
+    </p>
+
+    <select id="disputeReason" style="width: 100%; padding: 10px; background: #0f172a; color: white; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 15px;">
+      <option value="ROOM_NOT_FOUND">"Room not found / Version mismatch" aaya</option>
+      <option value="ROOM_CLOSED">"Room is Closed" dikha raha hai</option>
+      <option value="HOST_LEFT">Host lobby chhod kar chala gaya</option>
+      <option value="WRONG_GAME_MODE">Galat Game Mode ka code hai (e.g. SNL)</option>
+    </select>
+
+    <div class="btn-group">
+      <button class="btn btn-secondary" onclick="closeDisputeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="submitDispute()">Submit Report</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Smart API Base URL:
+  // If opened via file:/// -> http://localhost:3000
+  // If opened via http://localhost:3000 -> '' (relative)
+  const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+
+  let isBackendOnline = false;
+  let activeRole = 'HOST';
+
+  // Fallback Local Match State (if backend offline)
+  const localMatch = {
+    matchId: 'LK-8092',
+    status: 'WAITING_FOR_CODE',
+    roomCode: null,
+    usedCodes: new Set(['11223344', '55667788', '12345678'])
+  };
+
+  function logActivity(text, type = '') {
+    const box = document.getElementById('activityLogs');
+    const item = document.createElement('div');
+    item.className = 'log-item ' + type;
+    const time = new Date().toLocaleTimeString();
+    item.innerText = `[${time}] ${text}`;
+    box.appendChild(item);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function setBackendStatus(online) {
+    const pill = document.getElementById('backendPill');
+    if (online) {
+      if (!isBackendOnline) {
+        pill.className = 'backend-pill pill-connected';
+        pill.innerText = '⚡ Backend Connected (Port 3000)';
+        logActivity('Connected to backend server!', 'success');
+      }
+      isBackendOnline = true;
+    } else {
+      if (isBackendOnline || pill.innerText.includes('Connecting')) {
+        pill.className = 'backend-pill pill-offline';
+        pill.innerText = '🟡 Local Mode (Backend Offline)';
+      }
+      isBackendOnline = false;
+    }
+  }
+
+  function switchRole(role) {
+    activeRole = role;
+    const btnHost = document.getElementById('btnRoleHost');
+    const btnJoiner = document.getElementById('btnRoleJoiner');
+    const hostSec = document.getElementById('hostSection');
+    const joinSec = document.getElementById('joinerSection');
+
+    if (role === 'HOST') {
+      btnHost.classList.add('active');
+      btnJoiner.classList.remove('active');
+      hostSec.style.display = 'block';
+      joinSec.style.display = 'none';
+    } else {
+      btnJoiner.classList.add('active');
+      btnHost.classList.remove('active');
+      hostSec.style.display = 'none';
+      joinSec.style.display = 'block';
+      syncMatchStatus();
+    }
+  }
+
+  async function syncMatchStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/api/match/status`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      const data = await res.json();
+      if (data.success && data.match) {
+        setBackendStatus(true);
+        renderMatch(data.match);
+        return;
+      }
+    } catch (err) {
+      // Backend offline -> run local mode gracefully
+      setBackendStatus(false);
+      renderMatch(localMatch);
+    }
+  }
+
+  function renderMatch(m) {
+    document.getElementById('matchTitle').innerText = `Match #${m.matchId}`;
+    const badge = document.getElementById('matchBadge');
+    const joinCode = document.getElementById('joinerCodeDisplay');
+    const joinStatus = document.getElementById('joinerStatusText');
+
+    if (m.status === 'WAITING_FOR_CODE') {
+      badge.className = 'badge badge-wait';
+      badge.innerText = 'WAITING FOR CODE';
+      joinCode.innerText = 'WAITING...';
+      joinStatus.innerText = 'Host creating room...';
+    } else if (m.status === 'CODE_SUBMITTED') {
+      badge.className = 'badge badge-live';
+      badge.innerText = 'CODE READY';
+      joinCode.innerText = m.roomCode;
+      joinStatus.innerText = 'Code live! Waiting for joiner.';
+    } else if (m.status === 'RUNNING') {
+      badge.className = 'badge badge-live';
+      badge.innerText = 'MATCH RUNNING';
+      joinStatus.innerText = 'Both players connected!';
+    } else if (m.status === 'DISPUTED') {
+      badge.className = 'badge badge-dispute';
+      badge.innerText = 'DISPUTE RAISED';
+      joinStatus.innerText = `Reported: ${m.disputeReason || 'Wrong Code'}`;
+    }
+  }
+
+  async function submitHostCode() {
+    const input = document.getElementById('hostCodeInput');
+    const alertBox = document.getElementById('hostAlert');
+    const btn = document.getElementById('btnSubmitCode');
+    const code = input.value.trim();
+
+    alertBox.style.display = 'none';
+    btn.disabled = true;
+
+    // 1. Client-Side Quick Checks
+    if (code.length !== 8) {
+      showAlert(alertBox, 'alert-danger', '❌ Code bilkul 8-digits ka hona chahiye!');
+      logActivity('Invalid length: ' + code, 'warn');
+      btn.disabled = false;
+      return;
+    }
+
+    if (isBackendOnline) {
+      try {
+        logActivity(`Validating code ${code} in backend...`);
+        const res = await fetch(`${API_BASE}/api/match/submit-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomCode: code })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showAlert(alertBox, 'alert-success', `✅ Backend: ${data.message}`);
+          logActivity(`Backend accepted room code: ${code}`, 'success');
+          syncMatchStatus();
+        } else {
+          showAlert(alertBox, 'alert-danger', `❌ Backend Rejected: ${data.message}`);
+          logActivity(`Backend rejected: ${data.message}`, 'warn');
+        }
+      } catch (err) {
+        showAlert(alertBox, 'alert-danger', 'Server connection error: ' + err.message);
+      }
+    } else {
+      // Local Mode Check
+      if (localMatch.usedCodes.has(code)) {
+        showAlert(alertBox, 'alert-danger', '⚠️ Yeh code pehle use ho chuka hai!');
+        logActivity('Local duplicate rejected: ' + code, 'warn');
+      } else {
+        localMatch.usedCodes.add(code);
+        localMatch.roomCode = code;
+        localMatch.status = 'CODE_SUBMITTED';
+        showAlert(alertBox, 'alert-success', `✅ Local Mode: Code ${code} accepted!`);
+        logActivity('Local mode code accepted: ' + code, 'success');
+        renderMatch(localMatch);
+      }
+    }
+
+    btn.disabled = false;
+  }
+
+  async function confirmSuccess() {
+    const alertBox = document.getElementById('joinerAlert');
+    if (isBackendOnline) {
+      try {
+        const res = await fetch(`${API_BASE}/api/match/confirm-join`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showAlert(alertBox, 'alert-success', '🎉 ' + data.message);
+          logActivity('Joiner confirmed code. Match is running!', 'success');
+          syncMatchStatus();
+        }
+      } catch (err) {
+        showAlert(alertBox, 'alert-danger', err.message);
+      }
+    } else {
+      localMatch.status = 'RUNNING';
+      showAlert(alertBox, 'alert-success', '🎉 Match Running (Local Mode)!');
+      logActivity('Local match running confirmed', 'success');
+      renderMatch(localMatch);
+    }
+  }
+
+  function openDisputeModal() {
+    document.getElementById('disputeModal').style.display = 'flex';
+  }
+
+  function closeDisputeModal() {
+    document.getElementById('disputeModal').style.display = 'none';
+  }
+
+  async function submitDispute() {
+    const reason = document.getElementById('disputeReason').value;
+    closeDisputeModal();
+    const alertBox = document.getElementById('joinerAlert');
+
+    if (isBackendOnline) {
+      try {
+        const res = await fetch(`${API_BASE}/api/match/report-dispute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showAlert(alertBox, 'alert-danger', `🚨 ${data.message}`);
+          logActivity(`Dispute reported to backend: ${reason}`, 'warn');
+          syncMatchStatus();
+        }
+      } catch (err) {
+        showAlert(alertBox, 'alert-danger', err.message);
+      }
+    } else {
+      localMatch.status = 'DISPUTED';
+      localMatch.disputeReason = reason;
+      showAlert(alertBox, 'alert-danger', `🚨 Local Dispute Reported: ${reason}`);
+      logActivity('Local dispute reported: ' + reason, 'warn');
+      renderMatch(localMatch);
+    }
+  }
+
+  async function resetTestMatch() {
+    if (isBackendOnline) {
+      try {
+        await fetch(`${API_BASE}/api/match/reset`, { method: 'POST' });
+        logActivity('Match state reset on backend server.', 'success');
+      } catch (e) {}
+    } else {
+      localMatch.status = 'WAITING_FOR_CODE';
+      localMatch.roomCode = null;
+      logActivity('Local match reset.', 'success');
+    }
+    document.getElementById('hostCodeInput').value = '';
+    document.getElementById('hostAlert').style.display = 'none';
+    document.getElementById('joinerAlert').style.display = 'none';
+    syncMatchStatus();
+  }
+
+  function copyRoomCode() {
+    const code = (cachedMatch && cachedMatch.roomCode) || localMatch.roomCode;
+    if (!code) {
+      alert('Host ne abhi code submit nahi kiya hai!');
+      return;
+    }
+    navigator.clipboard.writeText(code);
+    alert('Room Code Copied: ' + code);
+  }
+
+  function openLudoApp() {
+    window.location.href = "intent://ludoking/#Intent;scheme=ludoking;package=com.ludo.king;end";
+  }
+
+  function showAlert(el, cls, msg) {
+    el.className = 'alert ' + cls;
+    el.innerHTML = msg;
+    el.style.display = 'flex';
+  }
+
+  setInterval(syncMatchStatus, 3000);
+  syncMatchStatus();
+</script>
+
+</body>
+</html>
