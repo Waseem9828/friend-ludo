@@ -437,49 +437,57 @@ export default {
         });
       }
 
-      // Maintain / Config
-      if (url.pathname === '/maintain' || url.pathname === '/api/maintain' || url.pathname === '/api/waludo/config' || url.pathname === '/waludo/config') {
+      // Maintain / Config (Dynamically driven by Admin Panel via MongoDB Atlas)
+      if (url.pathname === '/maintain' || url.pathname === '/api/maintain' || url.pathname === '/api/waludo/config' || url.pathname === '/waludo/config' || url.pathname === '/settings') {
+        let dbDoc = null;
+        try {
+          const db = await getMongoDb();
+          dbDoc = await db.collection('maintain').findOne({ _id: 'maintain_config' }) || await db.collection('maintain').findOne({});
+        } catch (e) {}
+
         return jsonResponse({
           _id: 'maintain_config',
           ConvertChips: true,
           LogoutButton: true,
-          autoWithdrawl: false,
-          bankPayout: true,
-          bankSellChips: true,
-          buyChips: true,
+          autoWithdrawl: Boolean(dbDoc?.autoWithdrawl),
+          bankPayout: Boolean(dbDoc?.bankPayout !== false),
+          bankSellChips: Boolean(dbDoc?.bankSellChips !== false),
+          buyChips: Boolean(dbDoc?.buyChips !== false),
           cyrusBankPayout: false,
           cyrusUpiPayout: false,
           firebase: true,
-          maintenanceMode: false,
-          manualKyc: false,
-          payout: 'mypay3',
+          maintenanceMode: Boolean(dbDoc?.maintenanceMode),
+          manualKyc: Boolean(dbDoc?.manualKyc),
+          payout: dbDoc?.payout || 'mypay3',
           playPage: false,
           playerPlaying: false,
-          registration: false,
+          registration: Boolean(dbDoc?.registration),
           requestedChallenge: false,
           rezorPayBankPayout: false,
           rezorPayUpiPayout: false,
-          setAlertMessage: WALUDO_CONFIG.setAlertMessage,
+          setAlertMessage: dbDoc?.setAlertMessage || WALUDO_CONFIG.setAlertMessage,
           setChallenge: false,
-          setMessage: WALUDO_CONFIG.setMessage,
+          setMessage: dbDoc?.setMessage || WALUDO_CONFIG.setMessage,
           spinner: true,
-          upiPayout: true,
-          upisellChips: true,
-          version: WALUDO_CONFIG.version,
-          wpSupport: WALUDO_CONFIG.wpSupport,
-          bankAccountThreshold: 3000,
-          maxSellAmount: 50000,
-          minSellAmount: 195,
-          upiMaxAmount: 3000,
+          upiPayout: Boolean(dbDoc?.upiPayout !== false),
+          upisellChips: Boolean(dbDoc?.upisellChips !== false),
+          version: dbDoc?.version || WALUDO_CONFIG.version,
+          wpSupport: dbDoc?.wpSupport || WALUDO_CONFIG.wpSupport,
+          bankAccountThreshold: Number(dbDoc?.bankAccountThreshold || 3000),
+          maxSellAmount: Number(dbDoc?.maxSellAmount || 50000),
+          minSellAmount: Number(dbDoc?.minSellAmount || 195),
+          upiMaxAmount: Number(dbDoc?.upiMaxAmount || 3000),
+          gameCommission: Number(dbDoc?.gameCommission || 5),
+          commission: Number(dbDoc?.gameCommission || 5),
           useNewSellPage: false,
-          payIn: [
+          payIn: dbDoc?.payIn || [
             {
               id: 'upigateway1',
               name: 'EKQR',
               logo: 'https://cdn.iconscout.com/icon/free/png-256/free-upi-logo-icon-download-in-svg-png-gif-file-formats--unified-payments-interface-payment-money-transfer-logos-icons-1747946.png?f=webp',
-              enabled: true,
-              status: true,
-              active: true,
+              enabled: Boolean(dbDoc?.upigateway1 !== false),
+              status: Boolean(dbDoc?.upigateway1 !== false),
+              active: Boolean(dbDoc?.upigateway1 !== false),
               _id: 'upigateway1_id'
             }
           ]
@@ -759,15 +767,21 @@ export default {
         });
       }
 
-      // Capacity & Limits
+      // Capacity & Limits (Driven by Admin Panel in MongoDB Atlas)
       if (url.pathname.includes('/user/capacityDetails')) {
+        let dbDoc = null;
+        try {
+          const db = await getMongoDb();
+          dbDoc = await db.collection('maintain').findOne({ _id: 'maintain_config' }) || await db.collection('maintain').findOne({});
+        } catch (e) {}
+
         return jsonResponse({
           status: 200,
           data: {
-            minDeposit: WALUDO_CONFIG.minDeposit,
-            maxDeposit: WALUDO_CONFIG.maxDeposit,
-            minWithdrawal: WALUDO_CONFIG.minWithdrawal,
-            maxWithdrawal: WALUDO_CONFIG.maxWithdrawal
+            minDeposit: Number(dbDoc?.minDeposit || WALUDO_CONFIG.minDeposit),
+            maxDeposit: Number(dbDoc?.maxDeposit || WALUDO_CONFIG.maxDeposit),
+            minWithdrawal: Number(dbDoc?.minWithdrawal || WALUDO_CONFIG.minWithdrawal),
+            maxWithdrawal: Number(dbDoc?.maxWithdrawal || WALUDO_CONFIG.maxWithdrawal)
           }
         });
       }

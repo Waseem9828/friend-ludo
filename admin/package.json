@@ -1,0 +1,9 @@
+{
+  "name": "friendludo-admin",
+  "version": "1.0.0",
+  "description": "Friend Ludo super admin panel",
+  "main": "worker.js",
+  "dependencies": {
+    "mongodb": "^7.7.0"
+  }
+}

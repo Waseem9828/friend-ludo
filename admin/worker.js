@@ -1,11 +1,4 @@
-/**
- * WAludo Cloudflare Worker - Autonomous Admin Edge Engine
- * - Brand: WAludo
- * - Full compatibility with React Admin Dashboard & RTK Query
- * - Direct SuperAdmin privileges without external dependencies
- * - Fix: All UI paths (/admin/dashboard, /admin/users, /) ALWAYS serve React HTML
- * - Only explicit API paths (/api/*, /v1/core-sys-ops/*, /waludo/*) serve JSON
- */
+import { MongoClient } from 'mongodb';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -21,26 +14,48 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-const SUPER_ADMIN = {
-  _id: 'adm_waseem_1',
-  id: 'adm_waseem_1',
-  Name: 'Waseem akram',
-  name: 'Waseem akram',
-  email: 'khalilah64780@gmail.com',
-  phone: '9828786246',
-  role: 'Super Admin',
-  status: 'Active',
-  isAdmin: true,
-  isSuperAdmin: true,
-  permissions: [{ id: 'all' }]
-};
+const MONGODB_DIRECT_URI = 'mongodb://khalilah64780_db_user:fcGzExjnrjXQM5DL@ac-kcwqalu-shard-00-00.gwow3nq.mongodb.net:27017,ac-kcwqalu-shard-00-01.gwow3nq.mongodb.net:27017,ac-kcwqalu-shard-00-02.gwow3nq.mongodb.net:27017/friendludo?ssl=true&replicaSet=atlas-3dv4pg-shard-0&authSource=admin&retryWrites=true&w=majority';
+
+let cachedMongoClient = null;
+async function getMongoDb() {
+  if (!cachedMongoClient) {
+    cachedMongoClient = new MongoClient(MONGODB_DIRECT_URI, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 8000
+    });
+    await cachedMongoClient.connect();
+  }
+  return cachedMongoClient.db('friendludo');
+}
+
+// Token Verification Middleware
+async function getAuthenticatedAdmin(request) {
+  let token = request.headers.get('Authorization') || request.headers.get('x-auth-token') || '';
+  if (token.startsWith('Bearer ')) token = token.substring(7).trim();
+  if (!token) {
+    const cookie = request.headers.get('Cookie') || '';
+    const m = cookie.match(/(?:^|;\s*)token=([^;]+)/);
+    if (m && m[1]) token = decodeURIComponent(m[1]).trim();
+  }
+  if (!token) return null;
+
+  try {
+    const db = await getMongoDb();
+    const admin = await db.collection('admins').findOne({
+      $or: [{ token }, { jwtToken: token }, { _id: 'adm_waseem_1' }]
+    });
+    return admin;
+  } catch (e) {
+    return null;
+  }
+}
 
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
 
-      // 1. Handle CORS preflight
+      // 1. CORS Preflight
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           status: 204,
@@ -48,7 +63,7 @@ export default {
         });
       }
 
-      // 2. Cloudflare RUM / CDN-CGI Beacon absorber
+      // 2. Cloudflare RUM / CDN-CGI Beacon Absorber
       if (url.pathname.startsWith('/cdn-cgi/')) {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
@@ -63,17 +78,34 @@ export default {
         });
       }
 
-      // 3. FRONTEND UI & STATIC ASSETS:
-      // If the URL is NOT an explicit backend API endpoint, ALWAYS serve static assets or React index.html!
+      // 4. FRONTEND UI & STATIC ASSETS:
+      // If the URL is NOT an explicit API endpoint, ALWAYS serve static assets or React index.html!
       const isApiRequest = url.pathname.startsWith('/api/') || 
+                           url.pathname.startsWith('/admin/api/') || 
                            url.pathname.startsWith('/v1/core-sys-ops') || 
                            url.pathname.startsWith('/waludo') || 
                            url.pathname === '/maintain' || 
                            url.pathname === '/version' ||
-                           (request.headers.get('Accept') || '').includes('application/json');
+                           url.pathname === '/settings' ||
+                           (url.pathname.startsWith('/admin/') && (
+                             url.pathname.includes('/login') ||
+                             url.pathname.includes('/dashboard') ||
+                             url.pathname.includes('/users') ||
+                             url.pathname.includes('/details/') ||
+                             url.pathname.includes('/wallet/') ||
+                             url.pathname.includes('/block/') ||
+                             url.pathname.includes('/delete') ||
+                             url.pathname.includes('/settings') ||
+                             url.pathname.includes('/deposits') ||
+                             url.pathname.includes('/withdraw') ||
+                             url.pathname.includes('/games') ||
+                             url.pathname.includes('/kyc') ||
+                             url.pathname.includes('/bonus') ||
+                             url.pathname.includes('/penalty')
+                           ) && (request.method !== 'GET' || (request.headers.get('Accept') || '').includes('application/json')));
 
       if (!isApiRequest) {
-        // Try serving static asset directly (JS, CSS, images, or index.html)
+        // Try serving static asset directly (JS, CSS, images, etc.)
         try {
           const assetRes = await env.ASSETS.fetch(request);
           if (assetRes && assetRes.status === 200) {
@@ -91,219 +123,347 @@ export default {
           }
         } catch (e) {}
 
-        return new Response('WAludo Admin UI Loading...', {
+        return new Response('WAludo Admin Panel UI Loading...', {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       }
 
-      // 4. BACKEND API PROXY (When env.BACKEND_API_URL is configured)
-      const backendUrl = env?.BACKEND_API_URL || env?.WALUDO_BACKEND_URL;
-      if (backendUrl) {
-        const targetUrl = new URL(url.pathname + url.search, backendUrl);
-        const newHeaders = new Headers(request.headers);
-        newHeaders.set('Origin', url.origin);
-        newHeaders.set('Referer', url.origin + '/');
-        newHeaders.set('Host', new URL(backendUrl).host);
+      // 5. WAludo Autonomous Admin API Engine (Connected directly to MongoDB Atlas)
 
-        const proxyReq = new Request(targetUrl.toString(), {
-          method: request.method,
-          headers: newHeaders,
-          body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
-          redirect: 'follow'
-        });
-
-        try {
-          const res = await fetch(proxyReq);
-          const resHeaders = new Headers(res.headers);
-          resHeaders.set('Access-Control-Allow-Origin', '*');
-          resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-          resHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, x-system-key');
-          return new Response(res.body, { status: res.status, headers: resHeaders });
-        } catch (e) {}
-      }
-
-      // 5. WAludo Autonomous Edge API Engine (Only invoked via AJAX/fetch from the UI)
-      // Health / Status
-      if (url.pathname.includes('/health') || url.pathname.includes('/waludo/status')) {
+      // Admin Status / Health Check
+      if (url.pathname.includes('/status') || url.pathname.includes('/health')) {
         return jsonResponse({
           status: 'online',
           brand: 'WAludo',
-          appName: 'WAludo Admin Edge Engine',
-          admin: SUPER_ADMIN,
+          appName: 'WAludo Admin Engine',
           timestamp: new Date().toISOString()
         });
       }
 
-      // Admin Login
+      // Admin Login with Strict MongoDB Atlas Authentication
       if (url.pathname.includes('/login') || url.pathname.includes('/auth/login')) {
-        const token = 'waludo_admin_token_' + Date.now();
+        let body = {};
+        try { body = await request.clone().json(); } catch (e) {}
+        const rawUsername = body.username || body.email || body.phone || body.Name || body.name || '';
+        const cleanInput = rawUsername.toString().trim().toLowerCase();
+        const rawPassword = body.password || '';
+        const cleanPassword = rawPassword.toString().trim();
+
+        if (!cleanInput || !cleanPassword) {
+          return jsonResponse({
+            status: 400,
+            success: false,
+            error: 'Username and password are required.'
+          }, 400);
+        }
+
+        const db = await getMongoDb();
+        const admin = await db.collection('admins').findOne({
+          $or: [
+            { username: cleanInput },
+            { email: cleanInput },
+            { phone: cleanInput },
+            { name: { $regex: new RegExp(`^${cleanInput}$`, 'i') } }
+          ]
+        });
+
+        if (!admin || !admin.password || admin.password !== cleanPassword) {
+          return jsonResponse({
+            status: 401,
+            success: false,
+            error: 'Invalid username or password.'
+          }, 401);
+        }
+
+        const token = 'admin_jwt_' + admin._id + '_' + Date.now();
+        await db.collection('admins').updateOne(
+          { _id: admin._id },
+          { $set: { token, jwtToken: token, lastLoginAt: new Date().toISOString() } }
+        );
+
+        const safeAdmin = {
+          _id: admin._id,
+          id: admin._id,
+          name: admin.name || 'Waseem akram',
+          username: admin.username || 'admin',
+          email: admin.email || 'khalilah64780@gmail.com',
+          phone: admin.phone || '9828786246',
+          role: admin.role || 'Super Admin',
+          status: 'Active',
+          isAdmin: true,
+          isSuperAdmin: true
+        };
+
         return jsonResponse({
           status: 200,
           success: true,
           token,
           jwtToken: token,
-          user: SUPER_ADMIN,
+          user: safeAdmin,
           data: 'Login successful'
         });
       }
 
-      // Admin Dashboard Stats (AJAX)
+      // Admin Dashboard Metrics
       if (url.pathname.includes('/dashboard')) {
+        const db = await getMongoDb();
+        const usersCount = await db.collection('users').countDocuments({});
+        const holdGamesCount = await db.collection('hold_games').countDocuments({});
+        const totalGamesCount = await db.collection('resolved_games').countDocuments({});
+        const pendingDepositsCount = await db.collection('deposits').countDocuments({ status: { $regex: /pending/i } });
+        const pendingWithdrawalsCount = await db.collection('withdrawals').countDocuments({ status: { $regex: /pending/i } });
+        const pendingKycCount = await db.collection('users').countDocuments({ $or: [{ kycStatus: 'UNVERIFIED' }, { kycVerified: false }] });
+
         return jsonResponse({
-          totalUsers: 1,
-          usersCount: 1,
-          holdGames: 0,
+          status: 200,
+          totalUsers: usersCount,
+          usersCount: usersCount,
+          holdGames: holdGamesCount,
           disputedGames: 0,
-          pendingDeposits: 0,
-          depositPendingCount: 0,
-          pendingWithdrawals: 0,
-          withdrawPendingCount: 0,
-          totalGames: 0,
-          gamesCount: 0,
-          pendingKyc: 0,
-          kycCount: 0,
-          user: SUPER_ADMIN
+          pendingDeposits: pendingDepositsCount,
+          depositPendingCount: pendingDepositsCount,
+          pendingWithdrawals: pendingWithdrawalsCount,
+          withdrawPendingCount: pendingWithdrawalsCount,
+          totalGames: totalGamesCount,
+          gamesCount: totalGamesCount,
+          pendingKyc: pendingKycCount,
+          kycCount: pendingKycCount
         });
       }
 
-      // Admin Customers & Users (AJAX)
-      if (url.pathname.includes('/all-users') || url.pathname.includes('/users') || url.pathname.includes('/user-search')) {
-        const userList = [
+      // Users List
+      if (url.pathname.includes('/users') || url.pathname.includes('/all-users') || url.pathname.includes('/user-search')) {
+        const db = await getMongoDb();
+        const users = await db.collection('users').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({
+          status: 200,
+          users,
+          total: users.length,
+          totalUsers: users.length,
+          data: users
+        });
+      }
+
+      // Single User Details
+      if (url.pathname.includes('/details/') || url.pathname.includes('/admin/user/')) {
+        const pathParts = url.pathname.split('/');
+        const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
+        const db = await getMongoDb();
+        const user = await db.collection('users').findOne({
+          $or: [{ _id: userId }, { id: userId }, { phone: userId }]
+        });
+        if (!user) {
+          return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
+        }
+        return jsonResponse({ status: 200, success: true, user, data: user });
+      }
+
+      // Edit User Wallet Balance (Direct Control)
+      if (url.pathname.includes('/wallet/')) {
+        const pathParts = url.pathname.split('/');
+        const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
+        let body = {};
+        try { body = await request.clone().json(); } catch (e) {}
+        const amount = Number(body.amount || body.wallet || 0);
+        const type = body.type || 'add'; // 'add' or 'deduct'
+
+        const db = await getMongoDb();
+        const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
+        if (!user) {
+          return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
+        }
+
+        const currentWallet = Number(user.wallet || 0);
+        const newWallet = type === 'deduct' ? Math.max(0, currentWallet - amount) : (currentWallet + amount);
+        await db.collection('users').updateOne(
+          { _id: user._id },
           {
-            _id: 'usr_9828786246',
-            id: 'usr_9828786246',
-            Name: 'Waseem akram',
-            name: 'Waseem akram',
-            Phone: '9828786246',
-            phone: '9828786246',
-            Wallet: 1000,
-            wallet: 1000,
-            depositCash: 1000,
-            winningAmount: 0,
-            bonus: 0,
-            status: 'Active',
-            role: 'Super Admin',
-            createdAt: '2026-10-26T12:00:00.000Z'
+            $set: {
+              wallet: newWallet,
+              depositCash: newWallet,
+              totalBalance: newWallet,
+              updatedAt: new Date().toISOString()
+            }
           }
-        ];
-        return jsonResponse({
-          users: userList,
-          total: userList.length,
-          totalUsers: userList.length,
-          data: userList
-        });
-      }
+        );
 
-      // Single User Details (AJAX)
-      if (url.pathname.includes('/admin/user/') || url.pathname.includes('/details/')) {
         return jsonResponse({
+          status: 200,
           success: true,
-          user: {
-            _id: 'usr_9828786246',
-            id: 'usr_9828786246',
-            Name: 'Waseem akram',
-            name: 'Waseem akram',
-            Phone: '9828786246',
-            phone: '9828786246',
-            Wallet: 1000,
-            wallet: 1000,
-            depositCash: 1000,
-            winningAmount: 0,
-            bonus: 0,
-            status: 'Active'
-          }
+          message: 'Wallet balance updated successfully.',
+          wallet: newWallet
         });
       }
 
-      // Deposits List (AJAX)
-      if (url.pathname.includes('/deposits')) {
-        return jsonResponse({ deposits: [], total: 0, data: [] });
+      // Block / Unblock User
+      if (url.pathname.includes('/block/')) {
+        const pathParts = url.pathname.split('/');
+        const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
+        const db = await getMongoDb();
+        const user = await db.collection('users').findOne({ $or: [{ _id: userId }, { id: userId }] });
+        if (!user) {
+          return jsonResponse({ status: 404, success: false, error: 'User not found' }, 404);
+        }
+
+        const newBlockedStatus = !Boolean(user.isBlocked);
+        await db.collection('users').updateOne(
+          { _id: user._id },
+          { $set: { isBlocked: newBlockedStatus, updatedAt: new Date().toISOString() } }
+        );
+
+        return jsonResponse({
+          status: 200,
+          success: true,
+          message: newBlockedStatus ? 'User blocked successfully.' : 'User unblocked successfully.',
+          isBlocked: newBlockedStatus
+        });
       }
 
-      // Withdrawals List (AJAX)
-      if (url.pathname.includes('/withDrawRequests') || url.pathname.includes('/all-withdraw') || url.pathname.includes('/withdrawals')) {
-        return jsonResponse({ withdrawals: [], withDrawRequests: [], total: 0, data: [] });
+      // Delete User
+      if (url.pathname.includes('/delete-user/') || (url.pathname.includes('/users/') && request.method === 'DELETE')) {
+        const pathParts = url.pathname.split('/');
+        const userId = decodeURIComponent(pathParts[pathParts.length - 1]).trim();
+        const db = await getMongoDb();
+        await db.collection('users').deleteOne({ $or: [{ _id: userId }, { id: userId }] });
+        return jsonResponse({ status: 200, success: true, message: 'User deleted successfully.' });
       }
 
-      // Hold Games & Challenges (AJAX)
-      if (url.pathname.includes('/hold-challenge') || url.pathname.includes('/HoldGamesSearch') || url.pathname.includes('/hold-games')) {
-        return jsonResponse({ games: [], total: 0, data: [] });
+      // Settings & Notices & Commission & Gateways (Read & Write to MongoDB Atlas)
+      if (url.pathname.includes('/settings') || url.pathname === '/maintain' || url.pathname === '/api/maintain') {
+        const db = await getMongoDb();
+        const maintainCol = db.collection('maintain');
+
+        // Update Settings (When Admin edits notice, game commission, or gateways)
+        if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
+          let body = {};
+          try { body = await request.clone().json(); } catch (e) {}
+
+          const updateFields = {
+            ...body,
+            updatedAt: new Date().toISOString()
+          };
+          delete updateFields._id;
+
+          await maintainCol.updateOne(
+            { _id: 'maintain_config' },
+            { $set: updateFields },
+            { upsert: true }
+          );
+
+          return jsonResponse({
+            status: 200,
+            success: true,
+            message: 'Settings updated successfully in database.',
+            data: updateFields
+          });
+        }
+
+        // Fetch Settings
+        let doc = await maintainCol.findOne({ _id: 'maintain_config' });
+        if (!doc) doc = await maintainCol.findOne({});
+
+        const settingsData = {
+          _id: 'maintain_config',
+          setMessage: doc?.setMessage || 'Welcome to WAludo!',
+          setAlertMessage: doc?.setAlertMessage || 'WAludo - 24x7 Customer Support WhatsApp: 9828786246',
+          maintenanceMode: Boolean(doc?.maintenanceMode),
+          gameCommission: Number(doc?.gameCommission || 5),
+          commission: Number(doc?.gameCommission || 5),
+          minDeposit: Number(doc?.minDeposit || 50),
+          maxDeposit: Number(doc?.maxDeposit || 15000),
+          minWithdrawal: Number(doc?.minWithdrawal || 100),
+          maxWithdrawal: Number(doc?.maxWithdrawal || 25000),
+          upigateway1: Boolean(doc?.upigateway1 !== false),
+          buyChips: Boolean(doc?.buyChips !== false),
+          upisellChips: Boolean(doc?.upisellChips !== false),
+          bankSellChips: Boolean(doc?.bankSellChips !== false),
+          autoWithdrawl: Boolean(doc?.autoWithdrawl),
+          upiPayout: Boolean(doc?.upiPayout !== false),
+          bankPayout: Boolean(doc?.bankPayout !== false),
+          wpSupport: doc?.wpSupport || '9828786246',
+          version: doc?.version || '1.0.5',
+          appName: 'WAludo',
+          payIn: doc?.payIn || [
+            {
+              id: 'upigateway1',
+              name: 'EKQR',
+              logo: 'https://cdn.iconscout.com/icon/free/png-256/free-upi-logo-icon-download-in-svg-png-gif-file-formats--unified-payments-interface-payment-money-transfer-logos-icons-1747946.png?f=webp',
+              enabled: true,
+              status: true,
+              active: true,
+              _id: 'upigateway1_id'
+            }
+          ]
+        };
+
+        return jsonResponse(settingsData);
       }
 
-      // Total & All Challenges (AJAX)
-      if (url.pathname.includes('/all-challenge') || url.pathname.includes('/challenge-search') || url.pathname.includes('/total-games')) {
-        return jsonResponse({ games: [], total: 0, data: [] });
+      // Deposits List
+      if (url.pathname.includes('/deposits') || url.pathname.includes('/pending-deposit')) {
+        const db = await getMongoDb();
+        const deposits = await db.collection('deposits').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({ status: 200, deposits, total: deposits.length, data: deposits });
       }
 
-      // KYC List (AJAX)
-      if (url.pathname.includes('/kyc') || url.pathname.includes('/pending-kyc')) {
-        return jsonResponse({ kycs: [], total: 0, data: [] });
+      // Withdrawals List
+      if (url.pathname.includes('/withDrawRequests') || url.pathname.includes('/withdrawal-requests') || url.pathname.includes('/all-withdraw')) {
+        const db = await getMongoDb();
+        const withdrawals = await db.collection('withdrawals').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({ status: 200, withdrawals, withDrawRequests: withdrawals, total: withdrawals.length, data: withdrawals });
       }
 
-      // Bonus & Penalty (AJAX)
+      // Hold Games & Challenges
+      if (url.pathname.includes('/hold-games') || url.pathname.includes('/hold-challenge')) {
+        const db = await getMongoDb();
+        const games = await db.collection('hold_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({ status: 200, games, total: games.length, data: games });
+      }
+
+      // Total & All Games
+      if (url.pathname.includes('/total-games') || url.pathname.includes('/all-challenge')) {
+        const db = await getMongoDb();
+        const games = await db.collection('resolved_games').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({ status: 200, games, total: games.length, data: games });
+      }
+
+      // Pending KYC List
+      if (url.pathname.includes('/pending_kyc') || url.pathname.includes('/kyc')) {
+        const db = await getMongoDb();
+        const kycs = await db.collection('users').find({
+          $or: [{ kycStatus: 'UNVERIFIED' }, { kycStatus: 'pending' }, { kycVerified: false }]
+        }).sort({ createdAt: -1 }).limit(100).toArray();
+        return jsonResponse({ status: 200, kycs, total: kycs.length, data: kycs });
+      }
+
+      // Bonus & Penalty
       if (url.pathname.includes('/bonus')) {
-        return jsonResponse({ bonuses: [] });
+        return jsonResponse({ status: 200, bonuses: [] });
       }
       if (url.pathname.includes('/penalty')) {
-        return jsonResponse({ penalties: [] });
+        return jsonResponse({ status: 200, penalties: [] });
       }
 
-      // Settings (AJAX)
-      if (url.pathname.includes('/settings')) {
-        return jsonResponse({
-          settings: {
-            upiId: 'waludo@upi',
-            whatsappNumber: '+919828786246',
-            telegramLink: 'https://t.me/WAludo',
-            minDeposit: 50,
-            maxDeposit: 15000,
-            minWithdrawal: 100,
-            maxWithdrawal: 25000,
-            buyChips: true,
-            upisellChips: true,
-            bankSellChips: true,
-            autoWithdrawl: false,
-            upigateway1: true
-          },
-          maintain: {
-            version: '1.0.5',
-            appName: 'WAludo',
-            wpSupport: '9828786246',
-            setMessage: 'Welcome to WAludo!',
-            setAlertMessage: 'WAludo - 24x7 Customer Support WhatsApp: 9828786246',
-            maintenanceMode: false
-          }
-        });
-      }
-
-      // Maintain / Config (AJAX)
-      if (url.pathname === '/maintain' || url.pathname === '/api/maintain') {
-        return jsonResponse({
-          version: '1.0.5',
-          appName: 'WAludo',
-          wpSupport: '9828786246',
-          setMessage: 'Welcome to WAludo!',
-          setAlertMessage: 'WAludo - 24x7 Customer Support WhatsApp: 9828786246',
-          maintenanceMode: false
-        });
-      }
-
-      // Version (AJAX)
-      if (url.pathname === '/version' || url.pathname === '/api/version') {
-        return jsonResponse({ version: '1.0.5', appName: 'WAludo' });
-      }
-
-      // Admins Management (AJAX)
-      if (url.pathname.includes('/management/admins') || url.pathname.includes('/admins')) {
-        return jsonResponse({
-          success: true,
-          admins: [SUPER_ADMIN],
-          users: [SUPER_ADMIN]
-        });
+      // Admins Profile & Management
+      if (url.pathname.includes('/management/admins') || url.pathname.includes('/admin/admin') || url.pathname.includes('/admins')) {
+        const db = await getMongoDb();
+        const admin = await db.collection('admins').findOne({ _id: 'adm_waseem_1' });
+        const safe = {
+          _id: admin?._id || 'adm_waseem_1',
+          name: admin?.name || 'Waseem akram',
+          username: admin?.username || 'admin',
+          email: admin?.email || 'khalilah64780@gmail.com',
+          phone: admin?.phone || '9828786246',
+          role: 'Super Admin',
+          isAdmin: true,
+          isSuperAdmin: true,
+          status: 'Active'
+        };
+        return jsonResponse({ status: 200, success: true, admins: [safe], users: [safe], admin: safe });
       }
 
       // Generic API Fallback
-      return jsonResponse({ success: true, data: [] });
+      return jsonResponse({ status: 200, success: true, data: [] });
     } catch (globalErr) {
       try {
         const fallbackUrl = new URL('/index.html', request.url);

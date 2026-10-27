@@ -2465,41 +2465,79 @@ export function verifySuperAdminStatus(req, res, next) {
   next();
 }
 
-const handleLogin = (req, res) => {
+const handleLogin = async (req, res) => {
   const store = getStore();
-  const { email, password, phone } = req.body || {};
-  const cleanInput = (email || phone || '').toString().trim().toLowerCase();
+  const { email, password, phone, username } = req.body || {};
+  const cleanInput = (username || email || phone || '').toString().trim().toLowerCase();
   const cleanPassword = (password || '').toString().trim();
 
-  const adminAccount = (store.admins || []).find(a => {
-    const aEmail = (a.email || '').toLowerCase();
-    const aSecEmail = (a.secondaryEmail || '').toLowerCase();
-    const aPhone = (a.phone || '').toString();
-    const aSecPhone = (a.secondaryPhone || '').toString();
-    const aName = (a.name || a.Name || '').toLowerCase();
-    return aEmail === cleanInput || aSecEmail === cleanInput || aPhone === cleanInput || aSecPhone === cleanInput || aName === cleanInput;
-  });
-
-  if (adminAccount) {
-    if (!cleanPassword || cleanPassword === adminAccount.password || cleanPassword.toLowerCase() === (adminAccount.password || '').toLowerCase() || cleanPassword === 'Mdwa@98.' || cleanPassword === 'mdwa@98.') {
-      const token = 'admin_jwt_' + (adminAccount._id || adminAccount.id || 'adm_1') + '_' + Date.now();
-      return res.json({
-        status: 200,
-        success: true,
-        token,
-        jwtToken: token,
-        data: 'OTP sent successfully!',
-        user: {
-          ...adminAccount,
-          isAdmin: true,
-          isSuperAdmin: true,
-          status: 'Active'
-        }
-      });
-    }
+  if (!cleanInput || !cleanPassword) {
+    return res.status(401).json({
+      success: false,
+      status: 401,
+      error: 'INVALID_CREDENTIALS',
+      message: 'Username and password are required.'
+    });
   }
 
-  res.status(401).json({ success: false, status: 401, error: 'INVALID_CREDENTIALS', message: 'Login failed. Invalid credentials.' });
+  let adminAccount = null;
+  const database = getDb();
+  if (database) {
+    try {
+      adminAccount = await database.collection('admins').findOne({
+        $or: [
+          { username: cleanInput },
+          { email: cleanInput },
+          { phone: cleanInput },
+          { name: { $regex: new RegExp(`^${cleanInput}$`, 'i') } }
+        ]
+      });
+    } catch (err) {}
+  }
+
+  if (!adminAccount) {
+    adminAccount = (store.admins || []).find(a => {
+      const aUser = (a.username || '').toLowerCase();
+      const aEmail = (a.email || '').toLowerCase();
+      const aPhone = (a.phone || '').toString();
+      const aName = (a.name || a.Name || '').toLowerCase();
+      return aUser === cleanInput || aEmail === cleanInput || aPhone === cleanInput || aName === cleanInput;
+    });
+  }
+
+  if (adminAccount && adminAccount.password && adminAccount.password === cleanPassword) {
+    const token = 'admin_jwt_' + (adminAccount._id || adminAccount.id || 'adm_1') + '_' + Date.now();
+    adminAccount.token = token;
+    adminAccount.jwtToken = token;
+    if (database) {
+      try {
+        await database.collection('admins').updateOne(
+          { _id: adminAccount._id },
+          { $set: { token, jwtToken: token, lastLoginAt: new Date().toISOString() } }
+        );
+      } catch (e) {}
+    }
+    return res.json({
+      status: 200,
+      success: true,
+      token,
+      jwtToken: token,
+      data: 'Login successful',
+      user: {
+        ...adminAccount,
+        isAdmin: true,
+        isSuperAdmin: true,
+        status: 'Active'
+      }
+    });
+  }
+
+  res.status(401).json({
+    success: false,
+    status: 401,
+    error: 'INVALID_CREDENTIALS',
+    message: 'Login failed. Invalid username or password.'
+  });
 };
 
 router.post(['/v1/core-sys-ops/auth/login', '/v1/core-sys-ops/login', '/admin/login', '/admin/auth/login', '/login', '/auth/login', '/auth/admin-login'], handleLogin);
