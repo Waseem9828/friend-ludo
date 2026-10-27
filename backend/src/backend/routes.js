@@ -1053,9 +1053,11 @@ async function findOrCreateUserInDb(phone, fullName) {
       fullName: isWaseem ? 'Waseem akram' : (fullName || ('Player ' + cleanPhone.slice(-4))),
       username: isWaseem ? 'Waseem akram' : (fullName || ('Player ' + cleanPhone.slice(-4))),
       userName: isWaseem ? 'Waseem akram' : (fullName || ('Player ' + cleanPhone.slice(-4))),
+      User_Name: isWaseem ? 'Waseem akram' : (fullName || ('Player ' + cleanPhone.slice(-4))),
+      user_name: isWaseem ? 'Waseem akram' : (fullName || ('Player ' + cleanPhone.slice(-4))),
       Phone: cleanPhone,
       phone: cleanPhone,
-      email: isWaseem ? 'khalilah64780@fmail.com' : undefined,
+      email: isWaseem ? 'khalilah64780@fmail.com' : `${cleanPhone}@waludo.in`,
       Wallet: 0,
       wallet: 0,
       totalBalance: 0,
@@ -1072,7 +1074,7 @@ async function findOrCreateUserInDb(phone, fullName) {
       verified: isWaseem,
       kycVerified: isWaseem,
       kycStatus: isWaseem ? 'APPROVED' : 'UNVERIFIED',
-      aadhaarNumber: isWaseem ? 'Verified' : '',
+      aadhaarNumber: isWaseem ? '997834567654' : '',
       aadhaarDetails: null,
       isBlocked: false,
       isAdmin: isWaseem,
@@ -1086,6 +1088,13 @@ async function findOrCreateUserInDb(phone, fullName) {
       history: [],
       bank: [],
       upiId: '',
+      capacityDetails: {
+        isKycCompleted: isWaseem,
+        limitMultiplier: isWaseem ? 5 : 1,
+        dailyWithdrawalLimit: isWaseem ? 100000 : 10000,
+        maxGameCapacity: isWaseem ? 50000 : 5000,
+        status: isWaseem ? 'UNLIMITED_ACCESS' : 'STANDARD'
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
